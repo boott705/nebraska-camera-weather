@@ -1,0 +1,1585 @@
+<meta charset="utf-8">
+<title>Nebraska Camera Weather</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;800&family=Overpass+Mono:wght@400;600&display=swap">
+<style>
+:root {
+  --ground: #f2f5f1;
+  --surface: #ffffff;
+  --surface-sunken: #e8ede7;
+  --ink: #16211b;
+  --muted: #56645b;
+  --faint: #8a968e;
+  --line: #d8e0da;
+  --accent: #1d6a45;          /* highway guide-sign green */
+  --accent-soft: #dcebe2;
+  --on-accent: #ffffff;
+  --series: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-muted: #b9c3bc;
+  --good: #2f8a57;
+  --warning: #b7791f;
+  --sign-amber: #f2a900;      /* amber LED message-sign text */
+  --critical: #c2413b;
+  --shadow: 0 1px 2px rgba(22, 33, 27, .06), 0 4px 16px rgba(22, 33, 27, .05);
+  --display: "Overpass", "Highway Gothic", "Arial Narrow", system-ui, sans-serif;
+  --mono: "Overpass Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #0f1512; --surface: #171f1a; --surface-sunken: #111814; --ink: #e9efeb; --muted: #a2afa7;
+    --faint: #6f7c74; --line: #28332c; --accent: #3fa874; --accent-soft: #1d3326; --on-accent: #07120c;
+    --series: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-muted: #3d4943;
+    --good: #45b075; --warning: #d49a3a; --critical: #e0635d; --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0f1512; --surface: #171f1a; --surface-sunken: #111814; --ink: #e9efeb; --muted: #a2afa7;
+  --faint: #6f7c74; --line: #28332c; --accent: #3fa874; --accent-soft: #1d3326; --on-accent: #07120c;
+  --series: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-muted: #3d4943;
+  --good: #45b075; --warning: #d49a3a; --critical: #e0635d; --shadow: none;
+}
+* { box-sizing: border-box; }
+body { background: var(--ground); color: var(--ink); font: 15px/1.5 var(--display); margin: 0; }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--series); outline-offset: 2px; }
+.number, .mono, td.number { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-inline: 20px; }
+
+/* top bar */
+.top-bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--accent); color: var(--on-accent); }
+.top-bar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding-block: 10px; }
+.brand { font-weight: 800; font-size: 18px; letter-spacing: .01em; display: flex; align-items: center; gap: 10px; }
+.brand-mark { width: 26px; height: 26px; border: 2px solid currentColor; border-radius: 5px; display: grid; place-items: center; font-size: 12px; }
+.top-nav { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-left: auto; }
+.top-nav a { color: var(--on-accent); text-decoration: none; font-weight: 600; font-size: 14px; opacity: .88; }
+.top-nav a:hover { opacity: 1; text-decoration: underline; }
+
+/* status strip */
+.status-strip { background: var(--surface); border-bottom: 1px solid var(--line); }
+.status-strip .wrap { display: grid; grid-template-columns: auto 1fr auto; gap: 12px 20px; align-items: center; padding-block: 14px; }
+.phase-chip { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.phase-chip .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.phase-chip.is-live .dot { animation: pulse 2s ease-in-out infinite; }
+.phase-chip.is-finished { background: var(--surface-sunken); color: var(--muted); }
+@keyframes pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .phase-chip.is-live .dot { animation: none; } }
+.progress { display: grid; gap: 4px; min-width: 0; }
+.progress-track { height: 8px; background: var(--surface-sunken); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--accent); border-radius: 4px; }
+.progress-label { font-size: 13px; color: var(--muted); }
+.updated { font-size: 13px; color: var(--muted); text-align: right; }
+@media (max-width: 720px) { .status-strip .wrap { grid-template-columns: 1fr; } .updated { text-align: left; } }
+
+main { display: grid; gap: 44px; padding-block: 28px 64px; }
+section { scroll-margin-top: 80px; display: grid; gap: 16px; }
+h2 { font-size: 24px; font-weight: 800; margin: 0; text-wrap: balance; }
+h3 { font-size: 15px; font-weight: 700; margin: 0; }
+.section-lede { color: var(--muted); margin: -8px 0 0; max-width: 72ch; }
+.eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; box-shadow: var(--shadow); min-width: 0; }
+.panel-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; margin-bottom: 10px; }
+.panel-note { font-size: 13px; color: var(--muted); }
+.grid-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+
+/* figures */
+.figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.figure { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.figure-value { font-family: var(--mono); font-size: 26px; font-weight: 600; line-height: 1.2; }
+.figure-label { font-size: 13px; color: var(--muted); }
+.figure.is-warning .figure-value { color: var(--warning); }
+
+/* charts */
+.chart { width: 100%; height: auto; display: block; overflow: visible; }
+.chart text { fill: var(--muted); font: 11px var(--mono); }
+.chart .axis-line { stroke: var(--line); }
+.chart .grid-line { stroke: var(--line); stroke-dasharray: 2 3; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); margin-top: 6px; }
+.legend-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.tooltip { position: fixed; z-index: 50; pointer-events: none; background: var(--ink); color: var(--ground); font: 12px/1.4 var(--mono); padding: 6px 8px; border-radius: 6px; max-width: 280px; }
+.empty { color: var(--faint); font-size: 14px; padding: 18px 0; }
+
+/* map + detail */
+.map-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 900px) { .map-layout { grid-template-columns: 1fr; } }
+.map svg { width: 100%; height: auto; display: block; }
+.map .state-shape { fill: var(--surface-sunken); stroke: var(--faint); stroke-width: 1.2; }
+.map .camera-dot { cursor: pointer; fill: var(--series); stroke: var(--surface); stroke-width: 1; }
+.map .camera-dot.is-silent { fill: var(--warning); }
+.map .camera-dot.is-hollow { fill: var(--surface); stroke: var(--series); stroke-width: 2; }
+.map .camera-dot.is-hollow.is-silent { stroke: var(--warning); }
+.map .camera-dot:hover, .map .camera-dot.is-selected { stroke: var(--ink); stroke-width: 2; }
+.map .station-mark { fill: var(--surface); stroke: var(--ink); stroke-width: 1.3; opacity: .6; }
+.map .station-mark.is-five-minute { fill: var(--ink); opacity: .85; }
+.map .station-mark.is-twenty-minute { fill: var(--faint); opacity: .85; }
+.legend-diamond { display: inline-block; width: 9px; height: 9px; border: 1.5px solid var(--ink); transform: rotate(45deg); margin-right: 8px; vertical-align: 0; }
+.legend-diamond.is-filled { background: var(--ink); }
+.legend-diamond.is-half { background: var(--faint); }
+.map .sign-mark { fill: var(--sign-amber); stroke: var(--ink); stroke-width: 1; cursor: pointer; }
+.map .sign-mark.is-dark { fill: var(--surface); stroke: var(--sign-amber); stroke-width: 2; }
+.map .sign-mark.is-speed { fill: var(--critical); }
+.map .road-weather-mark { fill: var(--series-3); stroke: var(--ink); stroke-width: 1; }
+.map .road-weather-mark.is-quiet { fill: var(--surface); stroke: var(--series-3); stroke-width: 1.8; }
+.legend-triangle { display: inline-block; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 10px solid var(--series-3); margin-right: 6px; vertical-align: -1px; }
+.legend-sign { display: inline-block; width: 12px; height: 8px; background: var(--sign-amber); border: 1px solid var(--ink); margin-right: 6px; vertical-align: 0; }
+.map-legend { display: flex; flex-wrap: wrap; gap: 4px 6px; font-size: 13px; color: var(--muted); }
+.map-legend [data-legend] { cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.map-legend [data-legend]:hover, .map-legend [data-legend]:focus-visible, .map-legend [data-legend].is-pinned { background: var(--surface-sunken); color: var(--ink); outline: none; }
+.map-legend [data-legend].is-pinned { box-shadow: inset 0 0 0 1px var(--ink); }
+.map [data-categories] { transition: opacity .15s; }
+.map svg.is-highlighting [data-categories] { opacity: .08; pointer-events: none; }
+.map svg.is-highlighting [data-categories].is-highlighted { opacity: 1; pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) { .map [data-categories] { transition: none; } }
+.update-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 16px; background: var(--ink); color: var(--ground); font-size: 14px; }
+.update-bar[hidden] { display: none; }
+.update-bar-button { font: inherit; font-weight: 700; padding: 4px 12px; border-radius: 6px; border: 0; background: var(--accent); color: var(--on-accent); cursor: pointer; }
+.timelapse-stale { padding: 16px; font-size: 14px; color: var(--muted); }
+.window-note { font-size: 14px; color: var(--muted); margin: 10px 0 14px; }
+.legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+.detail { position: sticky; top: 130px; }
+.detail-image { aspect-ratio: 16 / 9; width: 100%; border-radius: 6px; background-color: var(--surface-sunken); background-repeat: no-repeat; }
+.detail-title { font-size: 19px; font-weight: 800; margin: 12px 0 2px; }
+.detail-meta { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 2px 14px; }
+dl.facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 12px 0 0; font-size: 14px; }
+dl.facts dt { color: var(--muted); }
+dl.facts dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.small-charts { display: grid; gap: 10px; margin-top: 14px; }
+.small-chart-label { font-size: 12px; color: var(--muted); display: flex; justify-content: space-between; }
+
+/* camera moves */
+.move-summary { font-size: 15px; margin: 0 0 12px; }
+.move-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.move-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 16px; }
+.move-card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.move-compare { position: relative; aspect-ratio: 16 / 9; background: var(--surface-sunken); --split: 50%; }
+.move-layer { position: absolute; inset: 0; background-size: 200% 100%; background-repeat: no-repeat; }
+.move-layer.is-before { background-position: 0% 0; }
+.move-layer.is-after { background-position: 100% 0; clip-path: inset(0 0 0 var(--split)); }
+.move-divider { position: absolute; top: 0; bottom: 0; left: var(--split); width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.35); pointer-events: none; }
+.move-tag { position: absolute; bottom: 8px; font: 700 11px var(--display); letter-spacing: .05em; text-transform: uppercase; color: #fff; background: rgba(0,0,0,.6); padding: 2px 7px; border-radius: 4px; pointer-events: none; }
+.move-tag.is-before { left: 8px; } .move-tag.is-after { right: 8px; }
+.move-slider { display: block; width: calc(100% - 24px); margin: 10px 12px 0; accent-color: var(--accent); }
+.move-caption { padding: 8px 12px 12px; font-size: 13px; display: grid; gap: 2px; }
+.move-caption .move-camera { font: inherit; font-weight: 800; font-size: 15px; text-align: left; color: var(--ink); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
+.move-caption .move-when { color: var(--muted); font-family: var(--mono); }
+.move-list { margin-top: 18px; font-size: 13px; }
+.move-list li { margin: 2px 0; }
+.move-list button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
+
+/* timelapse */
+.timelapse { display: grid; gap: 8px; margin-top: 4px; }
+.timelapse-image { aspect-ratio: 16 / 9; width: 100%; border-radius: 6px; background-color: var(--surface-sunken); background-repeat: no-repeat; }
+.timelapse-controls { display: flex; align-items: center; gap: 10px; }
+.timelapse-controls input[type="range"] { flex: 1; accent-color: var(--accent); }
+.timelapse-play { font: inherit; font-weight: 700; min-width: 64px; padding: 5px 10px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); cursor: pointer; }
+.timelapse-caption { font-family: var(--mono); font-size: 13px; display: flex; flex-wrap: wrap; gap: 2px 14px; }
+.light-chip { font-family: var(--display); font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 1px 7px; border-radius: 4px; }
+.light-chip.is-day { background: #f6e7a8; color: #5a4a00; }
+.light-chip.is-dusk { background: #f3c7a5; color: #6b3000; }
+.light-chip.is-night { background: #1f2a44; color: #dfe6ff; }
+.timelapse-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.timelapse-button { font: inherit; text-align: left; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 0; overflow: hidden; cursor: pointer; }
+.timelapse-button:hover { border-color: var(--accent); }
+.timelapse-button .timelapse-image { border-radius: 0; }
+.timelapse-button span { display: block; padding: 6px 8px 8px; font-size: 12px; font-weight: 700; line-height: 1.3; }
+
+/* camera browser */
+.browser-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.browser-controls input[type="search"] { flex: 1 1 240px; font: inherit; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.browser-controls select { font: inherit; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font: inherit; font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.tile { text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 0; overflow: hidden; cursor: pointer; display: grid; }
+.tile:hover { border-color: var(--accent); }
+.tile-image { aspect-ratio: 16 / 9; width: 100%; background-color: var(--surface-sunken); background-repeat: no-repeat; }
+.tile-body { padding: 8px 10px 10px; display: grid; gap: 2px; }
+.tile-name { font-size: 13px; font-weight: 700; line-height: 1.3; }
+.tile-meta { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+.badge { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .04em; padding: 1px 6px; border-radius: 4px; margin-right: 4px; }
+.badge-interstate { background: #1e4f9c; color: #fff; }
+.badge-warning { background: var(--warning); color: #fff; }
+.badge-muted { background: var(--surface-sunken); color: var(--muted); }
+.more-row { display: flex; justify-content: center; margin-top: 12px; }
+.button { font: inherit; font-weight: 700; padding: 8px 16px; border-radius: 8px; border: 1px solid var(--accent); background: var(--surface); color: var(--accent); cursor: pointer; }
+
+/* tables */
+.table-scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th { text-align: left; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); font-weight: 700; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+td { padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+td.number { text-align: right; white-space: nowrap; }
+th[title] { cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
+th .unit { text-transform: none; letter-spacing: 0; font-weight: 400; }
+tr.is-notable td { background: var(--accent-soft); }
+td.measurement { white-space: nowrap; }
+.sign-message { font-family: var(--mono); font-size: 13px; }
+.sign-history summary { cursor: pointer; color: var(--accent); font-size: 13px; margin-top: 4px; }
+.sign-history ol { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+.sign-history li { margin: 2px 0; }
+td.is-flagged { background: var(--accent-soft); font-weight: 600; }
+tr.is-clickable { cursor: pointer; }
+tr.is-clickable:hover td { background: var(--surface-sunken); }
+.station-link { font: inherit; color: var(--accent); background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.map .focus-ring { fill: none; stroke: var(--accent); stroke-width: 3; pointer-events: none; animation: focus-pulse 1.4s ease-in-out infinite; }
+@keyframes focus-pulse { 50% { stroke-width: 1; opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .map .focus-ring { animation: none; } }
+
+/* gallery */
+.gallery-group { display: grid; gap: 10px; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.gallery figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.gallery img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: var(--surface-sunken); }
+.gallery figcaption { padding: 8px 10px 10px; font-size: 13px; color: var(--muted); display: grid; gap: 2px; }
+.gallery figcaption strong { color: var(--ink); }
+
+footer { color: var(--faint); font-size: 13px; padding-block: 0 40px; }
+.label-filters { margin: 18px 0 12px; }
+.label-tile { cursor: default; }
+.label-tile[hidden] { display: none; }
+.label-tile:hover { border-color: var(--line); }
+.badge-label { background: var(--accent-soft); color: var(--ink); }
+.badge-label.is-cannot_tell, .badge-label.is-unusable_frame { background: var(--surface-sunken); color: var(--muted); }
+</style>
+
+<header class="top-bar">
+  <div class="wrap">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">NE</span>Nebraska Camera Weather</div>
+    <nav class="top-nav" aria-label="Sections">
+      <a href="#overview">Overview</a><a href="#map">Map</a><a href="#cameras">Cameras</a><a href="#timelapse">Day to night</a><a href="#moves">Camera moves</a><a href="#frames">Frames</a><a href="#labels">Labels</a><a href="#weather">Weather</a><a href="#signs">Signs</a>
+    </nav>
+  </div>
+  <div class="update-bar" id="update-bar" role="status" hidden>
+    <span>Newer data is available.</span>
+    <button type="button" class="update-bar-button" id="update-bar-button">Reload</button>
+  </div>
+</header>
+<div class="status-strip">
+  <div class="wrap">
+    <span class="phase-chip" id="phase-chip"><span class="dot"></span><span id="phase-text">Loading</span></span>
+    <div class="progress">
+      <div class="progress-track"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+      <div class="progress-label" id="progress-label">Reading the latest collection data…</div>
+    </div>
+    <div class="updated" id="updated-label"></div>
+  </div>
+</div>
+
+<main class="wrap">
+  <section id="overview" aria-labelledby="overview-heading">
+    <h2 id="overview-heading">Collection at a glance</h2>
+    <p class="section-lede">Nebraska 511 road cameras are photographed every 15 minutes (the counts below say how many). Each frame is matched to the airport weather reports (ASOS) that describe the air at that moment.</p>
+    <div class="figures" id="overview-figures"></div>
+    <p class="window-note" id="recent-window-note"></p>
+    <div class="panel">
+      <div class="panel-heading"><h3>Every sweep of every camera</h3><span class="panel-note" id="sweep-note"></span></div>
+      <div id="sweep-chart"></div>
+    </div>
+  </section>
+
+  <section id="map" aria-labelledby="map-heading">
+    <h2 id="map-heading">Cameras and weather stations</h2>
+    <p class="section-lede">Click a camera to see its latest frame, its nearest airport, and how its picture has changed over the recent window. Cameras with no airport within 50 km are hollow. Green triangles are NDOT road weather stations (air and pavement temperature and wind; they report no visibility, so each camera's panel shows its nearest road sensor's raw readings next to the airport's). Amber bars are NDOT message signs: 511 lists a sign only while it shows a message, so signs are added as they switch on (VAS speed signs along I-80, mile 0–248, appear during reduced-speed events).</p>
+    <div class="map-layout">
+      <div class="panel map">
+        <div id="map-canvas"></div>
+        <p class="panel-note" id="map-focus-note" aria-live="polite"></p>
+        <div class="map-legend">
+          <span data-legend="camera-updating" tabindex="0" role="button" aria-pressed="false"><span class="legend-dot" style="background:var(--series)"></span>Updating normally</span>
+          <span data-legend="camera-silent" tabindex="0" role="button" aria-pressed="false"><span class="legend-dot" style="background:var(--warning)"></span>No new frame in 60 min</span>
+          <span data-legend="camera-no-airport" tabindex="0" role="button" aria-pressed="false"><span class="legend-dot" style="border:2px solid var(--series)"></span>No airport within 50 km</span>
+          <span data-legend="airport-five-minute" tabindex="0" role="button" aria-pressed="false"><span class="legend-diamond is-filled"></span>Airport reporting every 5 minutes</span>
+          <span data-legend="airport-twenty-minute" tabindex="0" role="button" aria-pressed="false"><span class="legend-diamond is-half"></span>Airport reporting every 20 minutes</span>
+          <span data-legend="airport-hourly" tabindex="0" role="button" aria-pressed="false"><span class="legend-diamond"></span>Airport reporting hourly</span>
+          <span data-legend="road-weather" tabindex="0" role="button" aria-pressed="false"><span class="legend-triangle"></span>Road weather station</span>
+          <span data-legend="message-sign" tabindex="0" role="button" aria-pressed="false"><span class="legend-sign"></span>NDOT message sign</span>
+        </div>
+      </div>
+      <aside class="panel detail" id="camera-detail" aria-live="polite"></aside>
+    </div>
+  </section>
+
+  <section id="cameras" aria-labelledby="cameras-heading">
+    <h2 id="cameras-heading">Every camera, latest frame</h2>
+    <div class="browser-controls">
+      <input type="search" id="camera-search" placeholder="Search by road, town or camera ID (e.g. I-80, Kearney, vid-006)" aria-label="Search cameras">
+      <div class="chips" role="group" aria-label="Filter cameras">
+        <button class="chip" type="button" id="filter-all" data-filter="all" aria-pressed="true">All</button>
+        <button class="chip" type="button" id="filter-interstate" data-filter="interstate" aria-pressed="false">I-80</button>
+        <button class="chip" type="button" id="filter-silent" data-filter="silent" aria-pressed="false">Silent</button>
+        <button class="chip" type="button" id="filter-no-station" data-filter="no-station" aria-pressed="false">No airport nearby</button>
+        <button class="chip" type="button" id="filter-night" data-filter="night" aria-pressed="false">Dark now</button>
+      </div>
+      <select id="camera-sort" aria-label="Sort cameras">
+        <option value="name">Sort: name</option>
+        <option value="brightness">Sort: darkest first</option>
+        <option value="contrast">Sort: lowest contrast first</option>
+        <option value="longitude">Sort: west to east</option>
+      </select>
+    </div>
+    <div class="panel-note" id="browser-count"></div>
+    <div class="tiles" id="camera-tiles"></div>
+    <div class="more-row"><button class="button" type="button" id="show-more">Show more</button></div>
+  </section>
+
+  <section id="timelapse" aria-labelledby="timelapse-heading">
+    <h2 id="timelapse-heading">Day to night on I-80</h2>
+    <p class="section-lede">Twelve I-80 cameras from the Wyoming line to Omaha, one frame per hour for the newest 24 hours. Pick one, then drag the slider or press Play: the time, the sun's elevation and the visibility the nearest airport reported change with each frame.</p>
+    <div class="timelapse-list" id="timelapse-list"></div>
+  </section>
+
+  <section id="moves" aria-labelledby="moves-heading">
+    <h2 id="moves-heading">Camera moves: before and after</h2>
+    <p class="section-lede">Times a camera was panned, tilted, zoomed, or pointed at a different scene, found by matching fixed details (poles, signs, lane lines) between frames of the same view. Drag the slider across each picture to compare the frame before the move with the frame after it. Only daytime frames are compared, so a move made overnight shows between the last evening frame and the first morning frame. Cameras that sway slightly in the wind, and changes that fog, rain or passing trucks cause for a frame or two, are not counted.</p>
+    <p class="move-summary" id="move-summary"></p>
+    <div class="move-filters" id="move-filters"></div>
+    <div class="move-grid" id="move-grid"></div>
+    <div id="move-list"></div>
+  </section>
+
+  <section id="frames" aria-labelledby="frames-heading">
+    <h2 id="frames-heading">Frames worth a look</h2>
+    <p class="section-lede">Picked automatically each update: the lowest-visibility matches, frames taken while an airport reported precipitation or haze, and the latest night frames on I-80.</p>
+    <div id="gallery-groups" style="display:grid;gap:22px"></div>
+  </section>
+
+  <section id="labels" aria-labelledby="labels-heading">
+    <h2 id="labels-heading">Labeled images</h2>
+    <p class="section-lede">I-80 frames our team has labeled in Roboflow with NDOT's road condition categories, judging only the pavement nearest the camera. These frames are from the September collection.</p>
+    <div class="figures" id="label-figures"></div>
+    <div class="panel">
+      <div class="panel-heading"><h3>Labels by condition</h3><span class="panel-note" id="label-source-note"></span></div>
+      <div id="label-chart"></div>
+      <p class="panel-note" id="label-check-note"></p>
+    </div>
+    <div class="chips label-filters" id="label-filters"></div>
+    <div class="tiles" id="label-tiles"></div>
+  </section>
+
+  <section id="weather" aria-labelledby="weather-heading">
+    <h2 id="weather-heading">Weather and matching</h2>
+    <p class="section-lede">A visibility report at time T averages the 10 minutes ending at T, so a frame is matched to the first report within 10 minutes after it ("averaging window"). If none exists, the closest report within 30 minutes is used. Matches keep improving for 4 hours as late reports arrive; after that they are final.</p>
+    <div class="grid-two">
+      <div class="panel">
+        <div class="panel-heading"><h3>How frames were matched (nearest airport)</h3><span class="panel-note">Split by whether the airport sends five-minute reports</span></div>
+        <div id="linking-chart"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-heading"><h3>Visibility linked to each frame</h3><span class="panel-note">cameras linked to stations with five-minute reports only</span></div>
+        <div class="panel-note" id="visibility-note"></div>
+        <div id="visibility-chart"></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-heading"><h3>Latest report at each airport used by a camera</h3><span class="panel-note">Lowest visibility first</span></div>
+      <div class="table-scroll" id="station-table"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-heading"><h3>Road weather stations: raw readings</h3><span class="panel-note" id="road-station-note"></span></div>
+      <p class="panel-note">Values as the NDOT road stations sent them over the recent window, not checked against anything; no station sends visibility. A highlighted cell is "mostly one value": at least half its readings are the same number (−22 °F is exactly −30 °C; 32 °F is exactly 0 °C). Hover a cell for its details.</p>
+      <div class="table-scroll" id="road-station-table"></div>
+    </div>
+  </section>
+
+  <section id="signs" aria-labelledby="signs-heading">
+    <h2 id="signs-heading">NDOT message signs</h2>
+    <p class="section-lede">Every electronic sign 511 has listed since recording began, with everything 511 reports about it. 511 lists a sign only while it shows a message, so a sign that drops off the list is recorded as "not listed" (most likely blank). Variable advisory speed (VAS) signs along I-80 appear here the first time they show a speed. Click a row to see the sign on the map; open "History" to see each message change.</p>
+    <div class="panel">
+      <div class="panel-heading"><h3>Signs and their messages</h3><span class="panel-note" id="sign-note"></span></div>
+      <div class="table-scroll" id="sign-table"></div>
+    </div>
+  </section>
+</main>
+<footer class="wrap" id="footer"></footer>
+<div class="tooltip" id="tooltip" hidden></div>
+
+<script>
+/* Pure text and number formatting for the dashboard: no page elements, no shared state.
+   Tested with Node (tests/test_dashboard_format.py runs tests/dashboard_format.test.js). */
+
+function formatNumber(value, digits = 0) {
+  if (value === null || value === undefined || Number.isNaN(value)) return "–";
+  // A true minus sign (U+2212), as in the page's notes, rather than a hyphen.
+  return Number(value).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits }).replace(/^-/, "\u2212");
+}
+function formatBytes(byteCount) {
+  const units = ["bytes", "KB", "MB", "GB", "TB"];
+  let unitIndex = 0;
+  while (byteCount >= 1024 && unitIndex < units.length - 1) { byteCount /= 1024; unitIndex += 1; }
+  return `${formatNumber(byteCount, unitIndex ? 1 : 0)} ${units[unitIndex]}`;
+}
+function parseUtc(text) { return text ? new Date(text) : null; }
+function formatLocalTime(text, withDate = true) {
+  const moment = parseUtc(text);
+  if (!moment) return "–";
+  if (!withDate) return moment.toLocaleString(undefined, { hour: "numeric", minute: "2-digit" });
+  // A weekday alone is ambiguous more than about a week away (e.g. the end of a year-long collection)
+  const isWithinAWeek = Math.abs(moment.getTime() - Date.now()) < 6 * 24 * 3600 * 1000;
+  return moment.toLocaleString(undefined, isWithinAWeek
+    ? { weekday: "short", hour: "numeric", minute: "2-digit" }
+    : { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+}
+function formatAge(text) {
+  const moment = parseUtc(text);
+  if (!moment) return "never";
+  const minutes = Math.round((Date.now() - moment.getTime()) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  return hours < 48 ? `${hours} h ${minutes % 60} min ago` : `${Math.round(hours / 24)} days ago`;
+}
+function formatVisibility(miles, isAtMaximum) {
+  if (miles === null || miles === undefined) return "–";
+  return isAtMaximum ? "10+ mi" : `${formatNumber(miles, miles < 1 ? 2 : 1)} mi`;
+}
+/* Airport weather codes -> plain words, e.g. "+TSRA BR" -> "heavy thunderstorm with rain, mist" */
+const weatherPhenomenonWords = { RA: "rain", SN: "snow", DZ: "drizzle", PL: "ice pellets", GR: "hail", GS: "small hail",
+  SG: "snow grains", IC: "ice crystals", UP: "unidentified precipitation", FG: "fog", BR: "mist", HZ: "haze", FU: "smoke",
+  DU: "dust", SA: "sand", SQ: "squalls", FC: "funnel cloud", VA: "volcanic ash", PY: "spray", PO: "dust whirls",
+  SS: "sandstorm", DS: "dust storm" };
+const weatherDescriptorWords = { MI: "shallow", PR: "partial", BC: "patchy", DR: "drifting", BL: "blowing", FZ: "freezing" };
+function describeWeatherGroup(group) {
+  let intensity = "", isNearby = false;
+  if (group.startsWith("-")) { intensity = "light "; group = group.slice(1); }
+  else if (group.startsWith("+")) { intensity = "heavy "; group = group.slice(1); }
+  if (group.startsWith("VC")) { isNearby = true; group = group.slice(2); }
+  const descriptors = [];
+  while (["MI", "PR", "BC", "DR", "BL", "SH", "TS", "FZ"].includes(group.slice(0, 2))) { descriptors.push(group.slice(0, 2)); group = group.slice(2); }
+  const phenomena = [];
+  for (let index = 0; index < group.length; index += 2) phenomena.push(weatherPhenomenonWords[group.slice(index, index + 2)] || group.slice(index, index + 2));
+  const modifiers = descriptors.filter(code => weatherDescriptorWords[code]).map(code => weatherDescriptorWords[code]).join(" ");
+  let phrase = [modifiers, phenomena.join(" and ")].filter(Boolean).join(" ");
+  if (descriptors.includes("SH")) phrase = phrase ? `${phrase} showers` : "showers";
+  if (descriptors.includes("TS")) phrase = phrase ? `thunderstorm with ${phrase}` : "thunderstorm";
+  return `${intensity}${phrase}${isNearby ? " nearby" : ""}`.trim();
+}
+function describeWeather(rawCodes) {
+  if (!rawCodes) return "none reported";
+  return rawCodes.split(/\s+/).filter(Boolean).map(describeWeatherGroup).join(", ");
+}
+function formatWind(speedKnots, gustKnots) {
+  if (speedKnots === null || speedKnots === undefined) return "–";
+  if (!speedKnots) return "calm";
+  return `${formatNumber(speedKnots * 1.15078)} mph${gustKnots ? `, gusts ${formatNumber(gustKnots * 1.15078)}` : ""}`;
+}
+
+function niceMaximum(value) {
+  if (!value || value <= 0) return 1;
+  const magnitude = 10 ** Math.floor(Math.log10(value));
+  for (const step of [1, 2, 2.5, 5, 10]) if (step * magnitude >= value) return step * magnitude;
+  return 10 * magnitude;
+}
+
+/* How often an airport reports, measured from its own reports over the last 48 hours. */
+function describeReportInterval(station, isLong = false) {
+  const minutes = station.routine_report_interval_minutes;
+  const long = {
+    five_minute: "reports every 5 minutes (temperature hourly)",
+    twenty_minute: "reports every 20 minutes",
+    hourly: "reports hourly",
+    other: minutes ? `reports about every ${formatNumber(minutes)} minutes` : "report interval unknown",
+    unknown: "report interval unknown",
+  };
+  const short = { five_minute: "5 min", twenty_minute: "20 min", hourly: "60 min", other: minutes ? `~${formatNumber(minutes)} min` : "unknown", unknown: "unknown" };
+  return (isLong ? long : short)[station.report_interval] || (isLong ? long.unknown : short.unknown);
+}
+
+function lightLevel(sunElevation) {
+  if (sunElevation === null || sunElevation === undefined) return ["unknown", ""];
+  if (sunElevation < -6) return ["night", "is-night"];
+  if (sunElevation < 0) return ["dusk / dawn", "is-dusk"];
+  return ["day", "is-day"];
+}
+
+function describeMovement(movement) {
+  const horizontal = Math.abs(movement.horizontal_shift_percent || 0), vertical = Math.abs(movement.vertical_shift_percent || 0);
+  switch (movement.movement_kind) {
+    case "pan_left": return `Panned left: the scene shifted ${formatNumber(horizontal, 1)}% of the frame width`;
+    case "pan_right": return `Panned right: the scene shifted ${formatNumber(horizontal, 1)}% of the frame width`;
+    case "tilt_up": return `Tilted up: the scene shifted ${formatNumber(vertical, 1)}% of the frame width`;
+    case "tilt_down": return `Tilted down: the scene shifted ${formatNumber(vertical, 1)}% of the frame width`;
+    case "zoom_in": return `Zoomed in ${formatNumber(movement.zoom_factor, 2)}×`;
+    case "zoom_out": return `Zoomed out to ${formatNumber(movement.zoom_factor, 2)}× the size`;
+    default: return "Pointed at a different scene";
+  }
+}
+
+/* A road station's latest raw reading, e.g. "air 64 °F · pavement 71 °F · wind 7 mph at Thu 12:05 PM" */
+function describeRoadReading(station) {
+  const parts = [];
+  if (station.air_temperature_fahrenheit !== null && station.air_temperature_fahrenheit !== undefined) parts.push(`air ${formatNumber(station.air_temperature_fahrenheit)} °F`);
+  if (station.pavement_temperature_fahrenheit !== null && station.pavement_temperature_fahrenheit !== undefined) parts.push(`pavement ${formatNumber(station.pavement_temperature_fahrenheit)} °F`);
+  if (station.wind_speed_knots !== null && station.wind_speed_knots !== undefined) parts.push(`wind ${formatNumber(station.wind_speed_knots * 1.15078)} mph`);
+  return `${parts.join(" · ") || "no values"} at ${formatLocalTime(station.latest_observed_at_utc)}`;
+}
+/* One road station measurement (report_data.summarize_readings) as a short cell, e.g.
+   "64 °F now · 48 to 79 °F" or "-22.0 °F in 96% of readings". formatValue(value, digits) adds the unit. */
+function describeMeasurementSummary(summary, formatValue) {
+  if (!summary || summary.pattern === "not sent") return "not sent";
+  if (summary.pattern === "too few readings") {
+    return `${formatValue(summary.latest, 0)} (only ${summary.value_count} reading${summary.value_count === 1 ? "" : "s"})`;
+  }
+  if (summary.pattern === "mostly one value") {
+    return `${formatValue(summary.most_common, 1)} in ${formatNumber(summary.most_common_share_percent)}% of readings`;
+  }
+  return `${formatValue(summary.latest, 0)} now · ${formatNumber(summary.minimum)} to ${formatValue(summary.maximum, 0)}`;
+}
+/* The details behind a measurement cell, for its hover text. */
+function describeMeasurementDetails(summary, formatValue) {
+  if (!summary || summary.pattern === "not sent") return "The station never sent this measurement.";
+  return [`${formatNumber(summary.value_count)} readings, ${formatNumber(summary.distinct_value_count)} different values`,
+          `lowest ${formatValue(summary.minimum, 1)}, highest ${formatValue(summary.maximum, 1)}, spread (standard deviation) ${formatValue(summary.standard_deviation, 1)}`,
+          `most common ${formatValue(summary.most_common, 1)} (${formatNumber(summary.most_common_share_percent)}% of readings)`,
+          `longest unchanged: ${formatNumber(summary.longest_unchanged_reading_count)} readings in a row (${formatNumber(summary.longest_unchanged_hours, 1)} h; a gap over 30 minutes ends a run)`].join("\n");
+}
+
+/* NDOT road condition classes (Roboflow labels) and our two extra ones, as people read them. */
+const roadConditionNames = {
+  dry_pavement: "Dry", wet_pavement: "Wet", damp_pavement: "Damp", frost: "Frost", snow: "Snow",
+  compacted_snow: "Compacted snow", drifted_snow: "Drifted snow", slush: "Slush", ice: "Ice",
+  cannot_tell: "Can't tell", unusable_frame: "Unusable",
+};
+function describeRoadCondition(name) {
+  if (name === null || name === undefined || name === "") return "–";
+  return roadConditionNames[name] || String(name).replace(/_/g, " ");
+}
+if (typeof module !== "undefined") module.exports = { describeMeasurementSummary, describeMeasurementDetails, describeRoadReading, formatNumber, formatBytes, parseUtc, formatLocalTime, formatAge, formatVisibility, describeWeatherGroup, describeWeather, formatWind, niceMaximum, describeReportInterval, lightLevel, describeMovement, describeRoadCondition };
+/* Dashboard page logic: loads the JSON bundle and draws every section. */
+"use strict";
+const state = { summary: null, series: null, seriesRequest: null, selectedCameraId: null, filter: "all", search: "", sort: "name", shownTileCount: 48 };
+const svgNamespace = "http://www.w3.org/2000/svg";
+const tooltipElement = document.getElementById("tooltip");
+
+/* ------------------------------------------------------------ helpers */
+function element(tagName, attributes = {}, children = []) {
+  const created = document.createElement(tagName);
+  for (const [name, value] of Object.entries(attributes)) {
+    if (name === "text") created.textContent = value;
+    else if (name === "style") created.style.cssText = value;
+    else if (value !== null && value !== undefined) created.setAttribute(name, value);
+  }
+  for (const child of [].concat(children)) if (child !== null && child !== undefined) created.append(child);
+  return created;
+}
+/* Show the first `initialCount` children of `itemsContainer`; a "Show more" button placed
+   after `anchor` reveals `stepCount` more at a time and disappears when all are shown. */
+function limitWithShowMore(itemsContainer, anchor, { initialCount, stepCount = initialCount, noun }) {
+  anchor.nextElementSibling?.classList.contains("more-row") && anchor.nextElementSibling.remove();
+  const items = [...itemsContainer.children];
+  if (items.length <= initialCount) return;
+  let shownCount = initialCount;
+  const button = element("button", { class: "button", type: "button" });
+  const row = element("div", { class: "more-row" }, button);
+  const update = () => {
+    items.forEach((item, index) => { item.hidden = index >= shownCount; });
+    const remaining = items.length - shownCount;
+    button.textContent = `Show ${formatNumber(Math.min(stepCount, remaining))} more ${noun} (${formatNumber(remaining)} not shown)`;
+    if (remaining <= 0) row.remove();
+  };
+  button.addEventListener("click", () => { shownCount += stepCount; update(); });
+  anchor.after(row);
+  update();
+}
+
+function svgElement(tagName, attributes = {}) {
+  const created = document.createElementNS(svgNamespace, tagName);
+  for (const [name, value] of Object.entries(attributes)) if (value !== null && value !== undefined) created.setAttribute(name, value);
+  return created;
+}
+
+function versioned(fileName) { return `${fileName}?v=${encodeURIComponent(state.summary ? state.summary.generated_at_utc : "")}`; }
+function showTooltip(event, text) {
+  tooltipElement.textContent = text;
+  tooltipElement.hidden = false;
+  const offset = 14;
+  const width = tooltipElement.offsetWidth, height = tooltipElement.offsetHeight;
+  let left = event.clientX + offset, top = event.clientY + offset;
+  if (left + width > window.innerWidth - 8) left = event.clientX - width - offset;
+  if (top + height > window.innerHeight - 8) top = event.clientY - height - offset;
+  tooltipElement.style.left = `${left}px`;
+  tooltipElement.style.top = `${top}px`;
+}
+function hideTooltip() { tooltipElement.hidden = true; }
+
+/* sprite: the latest frame of each camera lives in a tile of a thumbnail sheet */
+function applyThumbnail(target, camera) {
+  const tile = state.summary.thumbnail_tile;
+  const sheetCameraCount = Math.min(tile.tiles_per_sheet, state.summary.cameras.length - camera.thumbnail_sheet * tile.tiles_per_sheet);
+  const rowCount = Math.ceil(sheetCameraCount / tile.tiles_per_row);
+  const column = camera.thumbnail_position % tile.tiles_per_row;
+  const row = Math.floor(camera.thumbnail_position / tile.tiles_per_row);
+  const fileName = `thumbnails_${String(camera.thumbnail_sheet).padStart(2, "0")}.jpg`;
+  target.style.backgroundImage = camera.latest_captured_at_utc ? `url("${versioned(fileName)}")` : "none";
+  target.style.backgroundSize = `${tile.tiles_per_row * 100}% ${rowCount * 100}%`;
+  target.style.backgroundPosition = `${tile.tiles_per_row > 1 ? column / (tile.tiles_per_row - 1) * 100 : 0}% ${rowCount > 1 ? row / (rowCount - 1) * 100 : 0}%`;
+  target.setAttribute("role", "img");
+  target.setAttribute("aria-label", `Latest frame from ${camera.camera_name}`);
+}
+
+/* ------------------------------------------------------------ charts */
+function stackedBarChart(container, { categories, series, height = 190, width = 900, labelEvery = 1, tooltipFor }) {
+  const left = 44, right = 8, top = 10, bottom = 26;
+  const totals = categories.map((_, index) => series.reduce((sum, one) => sum + (one.values[index] || 0), 0));
+  const maximum = niceMaximum(Math.max(...totals, 1));
+  const svg = svgElement("svg", { viewBox: `0 0 ${width} ${height}`, class: "chart", role: "img", "aria-label": "Stacked bar chart" });
+  const plotWidth = width - left - right, plotHeight = height - top - bottom;
+  for (let tick = 0; tick <= 4; tick += 1) {
+    const value = maximum * tick / 4, y = top + plotHeight - plotHeight * tick / 4;
+    svg.append(svgElement("line", { x1: left, x2: width - right, y1: y, y2: y, class: tick === 0 ? "axis-line" : "grid-line" }));
+    const label = svgElement("text", { x: left - 6, y: y + 4, "text-anchor": "end" }); label.textContent = formatNumber(value); svg.append(label);
+  }
+  const slot = plotWidth / Math.max(categories.length, 1);
+  const barWidth = Math.max(2, Math.min(28, slot - 2));
+  categories.forEach((category, index) => {
+    let stackedHeight = 0;
+    const x = left + slot * index + (slot - barWidth) / 2;
+    series.forEach((one, seriesIndex) => {
+      const value = one.values[index] || 0;
+      if (!value) return;
+      const barHeight = plotHeight * value / maximum;
+      const isTop = series.slice(seriesIndex + 1).every(later => !later.values[index]);
+      const y = top + plotHeight - stackedHeight - barHeight;
+      svg.append(svgElement("rect", { x, y, width: barWidth, height: Math.max(barHeight - (stackedHeight ? 1 : 0), 0.5), rx: isTop ? Math.min(3, barWidth / 3) : 0, fill: one.color }));
+      stackedHeight += barHeight;
+    });
+    const hitArea = svgElement("rect", { x: left + slot * index, y: top, width: slot, height: plotHeight, fill: "transparent" });
+    hitArea.addEventListener("mousemove", event => showTooltip(event, tooltipFor(index)));
+    hitArea.addEventListener("mouseleave", hideTooltip);
+    svg.append(hitArea);
+    if (index % labelEvery === 0) {
+      const label = svgElement("text", { x: left + slot * index + slot / 2, y: height - 8, "text-anchor": "middle" });
+      label.textContent = category; svg.append(label);
+    }
+  });
+  container.replaceChildren(svg, element("div", { class: "legend" },
+    series.map(one => element("span", {}, [element("span", { class: "legend-swatch", style: `background:${one.color}` }), one.name]))));
+}
+
+function barChart(container, { labels, values, height = 190, width = 520, color = "var(--series)", tooltipFor, valueLabels = true }) {
+  stackedBarChart(container, { categories: labels, series: [{ name: "", values, color }], height, width, tooltipFor });
+  container.querySelector(".legend").remove();
+  if (valueLabels) {
+    const svg = container.querySelector("svg");
+    const maximum = niceMaximum(Math.max(...values, 1));
+    const left = 44, right = 8, top = 10, bottom = 26, plotWidth = width - left - right, plotHeight = height - top - bottom;
+    const slot = plotWidth / labels.length;
+    values.forEach((value, index) => {
+      if (!value) return;
+      const label = svgElement("text", { x: left + slot * index + slot / 2, y: top + plotHeight - plotHeight * value / maximum - 5, "text-anchor": "middle" });
+      label.textContent = formatNumber(value); svg.append(label);
+    });
+  }
+}
+
+function lineChart(container, { points, height = 90, color = "var(--series)", yDomain = null, formatValue, formatX, showDots = true, stepped = false }) {
+  const width = 420, left = 40, right = 8, top = 8, bottom = 18;
+  const valid = points.filter(point => point.y !== null && point.y !== undefined);
+  if (!valid.length) { container.replaceChildren(element("div", { class: "empty", text: "No data yet" })); return; }
+  const xMinimum = Math.min(...points.map(point => point.x)), xMaximum = Math.max(...points.map(point => point.x), xMinimum + 1);
+  let [yMinimum, yMaximum] = yDomain || [Math.min(...valid.map(point => point.y)), Math.max(...valid.map(point => point.y))];
+  if (yMinimum === yMaximum) { yMinimum -= 1; yMaximum += 1; }
+  const plotWidth = width - left - right, plotHeight = height - top - bottom;
+  const xFor = x => left + (x - xMinimum) / (xMaximum - xMinimum) * plotWidth;
+  const yFor = y => top + plotHeight - (y - yMinimum) / (yMaximum - yMinimum) * plotHeight;
+  const svg = svgElement("svg", { viewBox: `0 0 ${width} ${height}`, class: "chart", role: "img", "aria-label": "Line chart" });
+  [yMinimum, yMaximum].forEach(value => {
+    svg.append(svgElement("line", { x1: left, x2: width - right, y1: yFor(value), y2: yFor(value), class: "grid-line" }));
+    const label = svgElement("text", { x: left - 5, y: yFor(value) + 4, "text-anchor": "end" }); label.textContent = formatValue(value); svg.append(label);
+  });
+  [xMinimum, xMaximum].forEach((value, index) => {
+    const label = svgElement("text", { x: xFor(value), y: height - 3, "text-anchor": index ? "end" : "start" }); label.textContent = formatX(value); svg.append(label);
+  });
+  let path = "";
+  valid.forEach((point, index) => {
+    const x = xFor(point.x), y = yFor(point.y);
+    if (!index) path += `M${x},${y}`;
+    else if (stepped) path += `H${x}V${y}`;
+    else path += `L${x},${y}`;
+  });
+  svg.append(svgElement("path", { d: path, fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round" }));
+  if (showDots && valid.length < 150) valid.forEach(point => svg.append(svgElement("circle", { cx: xFor(point.x), cy: yFor(point.y), r: 2.2, fill: color })));
+  const last = valid[valid.length - 1];
+  svg.append(svgElement("circle", { cx: xFor(last.x), cy: yFor(last.y), r: 4, fill: color, stroke: "var(--surface)", "stroke-width": 2 }));
+  const cursor = svgElement("line", { y1: top, y2: top + plotHeight, stroke: "var(--faint)", "stroke-width": 1, visibility: "hidden" });
+  svg.append(cursor);
+  const hitArea = svgElement("rect", { x: left, y: top, width: plotWidth, height: plotHeight, fill: "transparent" });
+  hitArea.addEventListener("mousemove", event => {
+    const bounds = svg.getBoundingClientRect();
+    const xValue = xMinimum + ((event.clientX - bounds.left) / bounds.width * width - left) / plotWidth * (xMaximum - xMinimum);
+    const nearest = valid.reduce((best, point) => Math.abs(point.x - xValue) < Math.abs(best.x - xValue) ? point : best, valid[0]);
+    cursor.setAttribute("x1", xFor(nearest.x)); cursor.setAttribute("x2", xFor(nearest.x)); cursor.setAttribute("visibility", "visible");
+    showTooltip(event, `${formatX(nearest.x)}  ${formatValue(nearest.y)}`);
+  });
+  hitArea.addEventListener("mouseleave", () => { cursor.setAttribute("visibility", "hidden"); hideTooltip(); });
+  svg.append(hitArea);
+  container.replaceChildren(svg);
+}
+
+function scatterChart(container, { points, height = 170, xLabel, yLabel, xDomain, yDomain, referenceX = null, tooltipFor }) {
+  const width = 420, left = 40, right = 10, top = 8, bottom = 32;
+  if (!points.length) { container.replaceChildren(element("div", { class: "empty", text: "No data yet" })); return; }
+  const plotWidth = width - left - right, plotHeight = height - top - bottom;
+  const xFor = x => left + (x - xDomain[0]) / (xDomain[1] - xDomain[0]) * plotWidth;
+  const yFor = y => top + plotHeight - (y - yDomain[0]) / (yDomain[1] - yDomain[0]) * plotHeight;
+  const svg = svgElement("svg", { viewBox: `0 0 ${width} ${height}`, class: "chart", role: "img", "aria-label": `${yLabel} against ${xLabel}` });
+  for (let tick = 0; tick <= 4; tick += 1) {
+    const xValue = xDomain[0] + (xDomain[1] - xDomain[0]) * tick / 4, yValue = yDomain[0] + (yDomain[1] - yDomain[0]) * tick / 4;
+    svg.append(svgElement("line", { x1: left, x2: width - right, y1: yFor(yValue), y2: yFor(yValue), class: "grid-line" }));
+    const yText = svgElement("text", { x: left - 5, y: yFor(yValue) + 4, "text-anchor": "end" }); yText.textContent = formatNumber(yValue, 2); svg.append(yText);
+    const xText = svgElement("text", { x: xFor(xValue), y: top + plotHeight + 13, "text-anchor": "middle" }); xText.textContent = formatNumber(xValue); svg.append(xText);
+  }
+  if (referenceX !== null) svg.append(svgElement("line", { x1: xFor(referenceX), x2: xFor(referenceX), y1: top, y2: top + plotHeight, stroke: "var(--faint)", "stroke-dasharray": "4 3" }));
+  const axisText = svgElement("text", { x: left + plotWidth / 2, y: height - 2, "text-anchor": "middle" }); axisText.textContent = xLabel; svg.append(axisText);
+  points.forEach(point => {
+    const dot = svgElement("circle", { cx: xFor(point.x), cy: yFor(point.y), r: 4, fill: "var(--series)", stroke: "var(--surface)", "stroke-width": 1.5 });
+    dot.addEventListener("mousemove", event => showTooltip(event, tooltipFor(point)));
+    dot.addEventListener("mouseleave", hideTooltip);
+    svg.append(dot);
+  });
+  container.replaceChildren(svg);
+}
+
+/* ------------------------------------------------------------ status + overview */
+function renderStatus() {
+  const summary = state.summary, collection = summary.collection || {};
+  const chip = document.getElementById("phase-chip");
+  const phaseNames = { collecting: "Collecting", finishing: "Finishing matches", finished: "Finished", not_running: "Not running" };
+  document.getElementById("phase-text").textContent = phaseNames[collection.phase] || "Unknown";
+  chip.classList.toggle("is-live", collection.phase === "collecting" || collection.phase === "finishing");
+  chip.classList.toggle("is-finished", collection.phase === "finished" || collection.phase === "not_running");
+  const started = parseUtc(collection.started_at_utc), captureUntil = parseUtc(collection.capture_until_utc), finish = parseUtc(collection.expected_finish_utc);
+  let fraction = 0, label = "";
+  if (collection.phase === "finished") {
+    fraction = 1;
+    label = `Collection finished ${formatLocalTime(collection.finished_at_utc)}.`;
+  } else if (started && finish) {
+    const now = parseUtc(summary.generated_at_utc).getTime();
+    fraction = Math.min(1, Math.max(0, (now - started.getTime()) / (finish.getTime() - started.getTime())));
+    label = collection.phase === "collecting"
+      ? `Capturing until ${formatLocalTime(collection.capture_until_utc)}, then matching late weather reports until about ${formatLocalTime(collection.expected_finish_utc)}.`
+      : `Captures ended ${formatLocalTime(collection.capture_until_utc)}. Waiting for late weather reports; finishes about ${formatLocalTime(collection.expected_finish_utc)}.`;
+  } else {
+    label = "Collector status unknown.";
+  }
+  document.getElementById("progress-fill").style.width = `${(fraction * 100).toFixed(1)}%`;
+  document.getElementById("progress-label").textContent = label;
+  document.getElementById("updated-label").textContent = `Data as of ${formatLocalTime(summary.generated_at_utc)} (${formatAge(summary.generated_at_utc)})`;
+}
+
+function renderOverview() {
+  const totals = state.summary.totals;
+  const recentWindow = state.summary.recent_window || {};
+  document.getElementById("recent-window-note").textContent = recentWindow.since_utc
+    ? `The totals above cover the whole collection. Charts, tables and pictures below cover the newest ${formatNumber(recentWindow.recent_hours)} hours of data, from ${formatLocalTime(recentWindow.since_utc)}; the database keeps everything.`
+    : "";
+  const figures = [
+    ["Camera views photographed", formatNumber(totals.active_camera_count), `${formatNumber(totals.camera_site_count)} sites · ${formatNumber(totals.interstate_80_camera_count)} on I-80`],
+    ["Frames saved", formatNumber(totals.saved_frame_count), `${formatNumber(totals.attempt_count)} download attempts`],
+    ["Capture sweeps", formatNumber(state.summary.sweeps.length), "every 15 minutes"],
+    ["Weather reports stored", formatNumber(totals.weather_observation_count), `${formatNumber(totals.weather_station_count)} airports in 7 states`],
+    ["Data collected", formatBytes(totals.image_bytes + totals.database_bytes), totals.gigabytes_per_day !== null ? `images + database · ${formatNumber(totals.gigabytes_per_day, 1)} GB per day` : "images + database"],
+    ["Silent cameras", formatNumber(totals.silent_camera_count), "no new frame in 60 min", totals.silent_camera_count > 0],
+  ];
+  document.getElementById("overview-figures").replaceChildren(...figures.map(([label, value, note, isWarning]) =>
+    element("div", { class: `figure${isWarning ? " is-warning" : ""}` }, [
+      element("div", { class: "figure-value", text: value }),
+      element("div", { class: "figure-label", text: label }),
+      element("div", { class: "figure-label", style: "color:var(--faint)", text: note }),
+    ])));
+
+  const sweeps = state.summary.sweeps.slice(-96);
+  const statusGroups = [
+    { name: "New frame saved", statuses: ["saved"], color: "var(--series)" },
+    { name: "Unchanged since last sweep", statuses: ["not_modified", "duplicate_of_previous"], color: "var(--series-muted)" },
+    { name: "Stale, placeholder or invalid", statuses: ["stale_frame", "placeholder_image", "invalid_image"], color: "var(--warning)" },
+    { name: "Download failed", statuses: ["download_error"], color: "var(--critical)" },
+  ];
+  const series = statusGroups.map(group => ({ name: group.name, color: group.color,
+    values: sweeps.map(sweep => group.statuses.reduce((sum, status) => sum + (sweep.status_counts[status] || 0), 0)) }));
+  const labelEvery = Math.max(1, Math.ceil(sweeps.length / 12));
+  stackedBarChart(document.getElementById("sweep-chart"), {
+    categories: sweeps.map(sweep => formatLocalTime(sweep.started_at_utc, false)), series, labelEvery,
+    tooltipFor: index => {
+      const sweep = sweeps[index];
+      const parts = Object.entries(sweep.status_counts).sort((a, b) => b[1] - a[1]).map(([status, count]) => `${status.replaceAll("_", " ")}: ${formatNumber(count)}`);
+      return `${formatLocalTime(sweep.started_at_utc)} · ${sweep.duration_seconds} s\n${parts.join("\n")}`;
+    },
+  });
+  const durations = sweeps.map(sweep => sweep.duration_seconds).sort((a, b) => a - b);
+  document.getElementById("sweep-note").textContent = sweeps.length
+    ? `${sweeps.length} most recent sweeps · median ${durations[Math.floor(durations.length / 2)]} s per sweep of ${formatNumber(totals.active_camera_count)} cameras`
+    : "";
+}
+
+/* ------------------------------------------------------------ map */
+const nebraskaOutline = [[-104.053, 43.0], [-98.5, 43.0], [-98.03, 42.76], [-97.6, 42.85], [-97.2, 42.85], [-96.9, 42.73], [-96.63, 42.55], [-96.45, 42.49], [-96.35, 42.22], [-96.13, 41.97], [-96.08, 41.6], [-95.93, 41.4], [-95.87, 41.05], [-95.85, 40.7], [-95.65, 40.45], [-95.31, 40.0], [-102.05, 40.0], [-102.05, 41.0], [-104.053, 41.0]];
+const mapBounds = { west: -104.4, east: -95.1, north: 43.25, south: 39.75 };
+const longitudeScale = Math.cos(41.5 * Math.PI / 180);
+const mapWidth = 900, mapHeight = Math.round(mapWidth * (mapBounds.north - mapBounds.south) / ((mapBounds.east - mapBounds.west) * longitudeScale));
+function mapX(longitude) { return (longitude - mapBounds.west) / (mapBounds.east - mapBounds.west) * mapWidth; }
+function mapY(latitude) { return (mapBounds.north - latitude) / (mapBounds.north - mapBounds.south) * mapHeight; }
+
+function renderMap() {
+  const svg = svgElement("svg", { viewBox: `0 0 ${mapWidth} ${mapHeight}`, role: "img", "aria-label": "Map of Nebraska with camera and airport locations" });
+  svg.append(svgElement("polygon", { class: "state-shape", points: nebraskaOutline.map(([longitude, latitude]) => `${mapX(longitude)},${mapY(latitude)}`).join(" ") }));
+  const stationsById = new Map(state.summary.stations.map(station => [station.station_id, station]));
+  for (const station of state.summary.stations) {
+    if (station.latitude === null) continue;
+    const x = mapX(station.longitude), y = mapY(station.latitude);
+    const intervalClass = { five_minute: " is-five-minute", twenty_minute: " is-twenty-minute" }[station.report_interval] || "";
+    const intervalCategory = { five_minute: "airport-five-minute", twenty_minute: "airport-twenty-minute" }[station.report_interval] || "airport-hourly";
+    const mark = svgElement("rect", { class: `station-mark${intervalClass}`, "data-categories": intervalCategory, "data-station": station.station_id,
+      x: x - 4.5, y: y - 4.5, width: 9, height: 9, transform: `rotate(45 ${x} ${y})` });
+    mark.addEventListener("mousemove", event => showTooltip(event, stationTooltip(station)));
+    mark.addEventListener("mouseleave", hideTooltip);
+    svg.append(mark);
+  }
+  for (const station of state.summary.road_weather_stations || []) {
+    const x = mapX(station.longitude), y = mapY(station.latitude);
+    const isQuiet = !station.reading_count_last_24_hours;
+    const mark = svgElement("polygon", { class: `road-weather-mark${isQuiet ? " is-quiet" : ""}`, "data-categories": "road-weather", "data-station": station.station_id,
+      points: `${x},${y - 5.5} ${x + 5},${y + 3.5} ${x - 5},${y + 3.5}` });
+    mark.addEventListener("mousemove", event => showTooltip(event, roadWeatherTooltip(station)));
+    mark.addEventListener("mouseleave", hideTooltip);
+    svg.append(mark);
+  }
+  for (const sign of state.summary.electronic_signs || []) {
+    const x = mapX(sign.longitude), y = mapY(sign.latitude);
+    const isShowing = sign.sign_status === "DISPLAYING_MESSAGE";
+    const classes = ["sign-mark", isShowing ? "" : "is-dark", sign.has_displayed_speed_message ? "is-speed" : ""].filter(Boolean).join(" ");
+    const mark = svgElement("rect", { class: classes, x: x - 6, y: y - 4, width: 12, height: 8, rx: 1.5, "data-categories": "message-sign", "data-station": sign.sign_id });
+    mark.addEventListener("mousemove", event => showTooltip(event, signTooltip(sign)));
+    mark.addEventListener("mouseleave", hideTooltip);
+    mark.addEventListener("click", () => window.open(sign.sign_page_url, "_blank", "noopener"));
+    svg.append(mark);
+  }
+  for (const camera of state.summary.cameras) {
+    const dotClasses = ["camera-dot", camera.is_silent ? "is-silent" : "", camera.nearest_station_id ? "" : "is-hollow"].filter(Boolean).join(" ");
+    const dotCategories = [camera.is_silent ? "camera-silent" : "camera-updating", camera.nearest_station_id ? "" : "camera-no-airport"].filter(Boolean).join(" ");
+    const dot = svgElement("circle", { class: dotClasses, cx: mapX(camera.longitude), cy: mapY(camera.latitude), r: 4.2, "data-categories": dotCategories,
+      tabindex: 0, "data-camera": camera.camera_view_id, "aria-label": camera.camera_name });
+    dot.addEventListener("click", () => selectCamera(camera.camera_view_id, false));
+    dot.addEventListener("keydown", event => { if (event.key === "Enter") selectCamera(camera.camera_view_id, false); });
+    dot.addEventListener("mousemove", event => showTooltip(event, `${camera.camera_name}\n${camera.camera_view_id}${camera.nearest_station_id ? `\nnearest airport ${camera.nearest_station_id}, ${camera.nearest_station_distance_kilometers} km` : "\nno airport within 50 km"}`));
+    dot.addEventListener("mouseleave", hideTooltip);
+    svg.append(dot);
+  }
+  svg.addEventListener("click", event => { if (!event.target.closest("[data-categories]")) clearMapFocus(); });
+  document.getElementById("map-canvas").replaceChildren(svg);
+  state.stationsById = stationsById;
+  highlightMapCategory(state.pinnedMapCategory || null);
+}
+
+/* Hovering or focusing a legend entry fades everything else on the map; clicking pins it (for touch). */
+/* What the map emphasizes, in priority order: a legend entry being hovered or pinned,
+   else a station chosen from the Weather section (state.focusedStationId), else nothing. */
+function highlightMapCategory(category) {
+  const svg = document.querySelector("#map-canvas svg");
+  if (!svg) return;
+  svg.querySelector(".focus-ring")?.remove();
+  const focusNote = document.getElementById("map-focus-note");
+  if (focusNote) focusNote.textContent = "";
+  const focusedMark = !category && state.focusedStationId
+    ? [...svg.querySelectorAll("[data-station]")].find(mark => mark.dataset.station === state.focusedStationId) : null;
+  svg.classList.toggle("is-highlighting", Boolean(category || focusedMark));
+  for (const mark of svg.querySelectorAll("[data-categories]")) {
+    const isHighlighted = category ? mark.dataset.categories.split(" ").includes(category) : mark === focusedMark;
+    mark.classList.toggle("is-highlighted", isHighlighted);
+  }
+  if (focusedMark) {
+    const box = focusedMark.getBBox();
+    svg.append(svgElement("circle", { class: "focus-ring", cx: box.x + box.width / 2, cy: box.y + box.height / 2, r: 14 }));
+    focusNote.textContent = `Showing ${state.focusedStationId} on the map. Press Escape or click an empty part of the map to show everything.`;
+  }
+}
+function setPinnedMapCategory(category) {
+  state.pinnedMapCategory = category;
+  document.querySelectorAll(".map-legend [data-legend]").forEach(entry => {
+    const isPinned = entry.dataset.legend === category;
+    entry.classList.toggle("is-pinned", isPinned);
+    entry.setAttribute("aria-pressed", String(isPinned));
+  });
+}
+/* Clicking a station in the Weather section: scroll to the map and ring the station
+   (everything else faded) until Escape, a click on empty map, or a legend pin replaces it. */
+function focusMapStation(stationId) {
+  if (!document.querySelector(`#map-canvas [data-station="${CSS.escape(stationId)}"]`)) return;
+  state.focusedStationId = stationId;
+  setPinnedMapCategory(null);
+  highlightMapCategory(null);
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.getElementById("map").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+}
+function clearMapFocus() {
+  state.focusedStationId = null;
+  highlightMapCategory(state.pinnedMapCategory || null);
+}
+document.addEventListener("keydown", event => { if (event.key === "Escape") clearMapFocus(); });
+
+/* A table row that shows its station on the map: the whole row is clickable, the station id is the keyboard button. */
+function stationRow(stationId, cells, attributes = {}, label = stationId) {
+  // The map is drawn first; a station without a marker (no location) gets a plain row.
+  if (!document.querySelector(`#map-canvas [data-station="${CSS.escape(stationId)}"]`)) {
+    return element("tr", attributes, [element("td", { class: "mono", text: label, title: "Not on the map (no location)" }), ...cells]);
+  }
+  const button = element("button", { class: "station-link", type: "button", text: label, "aria-label": `Show ${label} on the map` });
+  button.addEventListener("click", event => { event.stopPropagation(); focusMapStation(stationId); });
+  const row = element("tr", { ...attributes, class: [attributes.class, "is-clickable"].filter(Boolean).join(" ") },
+    [element("td", { class: "mono" }, button), ...cells]);
+  row.addEventListener("click", () => focusMapStation(stationId));
+  return row;
+}
+
+function setUpMapLegend() {
+  const entries = document.querySelectorAll(".map-legend [data-legend]");
+  const restore = () => highlightMapCategory(state.pinnedMapCategory || null);
+  for (const entry of entries) {
+    const category = entry.dataset.legend;
+    entry.addEventListener("mouseenter", () => highlightMapCategory(category));
+    entry.addEventListener("focus", () => highlightMapCategory(category));
+    entry.addEventListener("mouseleave", restore);
+    entry.addEventListener("blur", restore);
+    const togglePin = () => {
+      state.focusedStationId = null;
+      setPinnedMapCategory(state.pinnedMapCategory === category ? null : category);
+      highlightMapCategory(state.pinnedMapCategory || category);
+    };
+    entry.addEventListener("click", togglePin);
+    entry.addEventListener("keydown", event => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); togglePin(); } });
+  }
+}
+
+
+function signTooltip(sign) {
+  const where = [sign.road_name, sign.travel_direction, sign.milepost !== null ? `mile ${formatNumber(sign.milepost, 1)}` : null].filter(Boolean).join(" · ");
+  const lines = [`Sign ${sign.sign_id} (${sign.sign_display_type || "type unknown"})`, where];
+  if (sign.sign_status === "DISPLAYING_MESSAGE") lines.push(`showing since ${formatLocalTime(sign.message_since_utc)}:`, sign.message_text || (sign.message_image_url ? "(image message)" : "(no text)"));
+  else lines.push(`not listed on 511 since ${formatLocalTime(sign.message_since_utc)} (probably blank)`);
+  if (sign.has_displayed_speed_message) lines.push("has displayed a speed: candidate VAS sign");
+  lines.push(`first seen ${formatLocalTime(sign.first_seen_at_utc)}`);
+  return lines.join("\n");
+}
+
+function roadWeatherTooltip(station) {
+  const lines = [`Road weather station ${station.station_id}`, station.station_name || "", "NDOT RWIS · no visibility sensor data"];
+  if (station.latest_observed_at_utc) {
+    lines.push(`latest reading ${formatLocalTime(station.latest_observed_at_utc)}:`);
+    if (station.air_temperature_fahrenheit !== null) lines.push(`air ${formatNumber(station.air_temperature_fahrenheit)} °F`);
+    if (station.pavement_temperature_fahrenheit !== null) lines.push(`pavement ${formatNumber(station.pavement_temperature_fahrenheit)} °F`);
+    if (station.wind_speed_knots !== null) lines.push(`wind ${formatNumber(station.wind_speed_knots * 1.15078)} mph`);
+  }
+  lines.push(station.reading_count_last_24_hours ? `${station.reading_count_last_24_hours} readings in the last 24 hours of data` : "no readings in the last 24 hours of data");
+  return lines.filter(Boolean).join("\n");
+}
+
+function stationTooltip(station) {
+  const latest = station.latest, temperature = station.latest_temperature;
+  const lines = [`Airport ${station.station_id} (${station.network_name}) · nearest to ${station.cameras_served} camera views`,
+    describeReportInterval(station, true)];
+  if (latest) lines.push(`can see ${formatVisibility(latest.visibility_miles, latest.is_visibility_at_reporting_maximum)} at ${formatLocalTime(latest.observed_at_utc)}`, `weather: ${describeWeather(latest.raw_present_weather_codes)}`);
+  if (temperature) lines.push(`${formatNumber(temperature.air_temperature_fahrenheit)} °F, dew point ${formatNumber(temperature.dew_point_fahrenheit)} °F`);
+  return lines.join("\n");
+}
+
+/* ------------------------------------------------------------ camera detail */
+function cameraById(cameraId) { return state.summary.cameras.find(camera => camera.camera_view_id === cameraId); }
+
+function selectCamera(cameraId, scrollIntoView = true, updateHash = true) {
+  const camera = cameraById(cameraId);
+  if (!camera) return;
+  state.selectedCameraId = cameraId;
+  document.querySelectorAll(".camera-dot.is-selected").forEach(dot => dot.classList.remove("is-selected"));
+  const dot = document.querySelector(`.camera-dot[data-camera="${CSS.escape(cameraId)}"]`);
+  if (dot) { dot.classList.add("is-selected"); dot.parentNode.append(dot); }
+  if (updateHash) try { history.replaceState(null, "", `#${cameraId}`); } catch (error) { /* hash updates are optional */ }
+  renderCameraDetail(camera);
+  if (scrollIntoView) document.getElementById("map").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+}
+
+function renderCameraDetail(camera) {
+  const detail = document.getElementById("camera-detail");
+  const image = element("div", { class: "detail-image" });
+  applyThumbnail(image, camera);
+  const station = camera.nearest_station_id ? state.stationsById.get(camera.nearest_station_id) : null;
+  const roadStation = camera.road_station_id
+    ? (state.summary.road_weather_stations || []).find(road => road.station_id === camera.road_station_id) : null;
+  const latest = station && station.latest, temperature = station && station.latest_temperature;
+  const badges = [];
+  if (camera.is_on_interstate_80) badges.push(element("span", { class: "badge badge-interstate", text: "I-80" }));
+  if (camera.is_silent) badges.push(element("span", { class: "badge badge-warning", text: "No new frame in 60 min" }));
+  if (camera.is_night) badges.push(element("span", { class: "badge badge-muted", text: "Dark" }));
+  const facts = [
+    ["Latest frame", camera.latest_captured_at_utc ? `${formatLocalTime(camera.latest_captured_at_utc)} (${formatAge(camera.latest_captured_at_utc)})` : "none yet"],
+    ["Frames saved", formatNumber(camera.frame_count)],
+    ["Nearest airport", station ? `${station.station_id}, ${camera.nearest_station_distance_kilometers} km, ${describeReportInterval(station, true)}` : "none within 50 km"],
+    ["How far you can see", latest ? `${formatVisibility(latest.visibility_miles, latest.is_visibility_at_reporting_maximum)} at ${formatLocalTime(latest.observed_at_utc, false)}` : "–"],
+    ["Weather at airport", latest ? describeWeather(latest.raw_present_weather_codes) : "–"],
+    ["Temperature · dew point", temperature ? `${formatNumber(temperature.air_temperature_fahrenheit)} °F · ${formatNumber(temperature.dew_point_fahrenheit)} °F` : "–"],
+    ["Road sensor", roadStation ? [`${roadStation.station_id}, ${camera.road_station_distance_kilometers} km · ${roadStation.station_name || ""}`,
+                                    camera.road_station_paired_since_utc ? ` · paired since ${formatLocalTime(camera.road_station_paired_since_utc)}` : "",
+                                    camera.road_station_pairing_count > 1 ? ` (this camera has had ${camera.road_station_pairing_count} sensors; the charts below may mix them)` : ""].join("")
+                                 : "none reporting within 50 km"],
+    ["Road sensor now", roadStation && roadStation.latest_observed_at_utc ? describeRoadReading(roadStation) : "–"],
+    ["Brightness · contrast", `${formatNumber(camera.mean_brightness, 2)} · ${formatNumber(camera.contrast_standard_deviation, 3)}`],
+    ["Sun elevation", camera.sun_elevation_degrees === null ? "–" : `${formatNumber(camera.sun_elevation_degrees, 1)}°`],
+  ];
+  const links = element("div", { class: "detail-meta" }, [
+    element("a", { href: camera.camera_page_url, target: "_blank", rel: "noopener", text: "Open on 511" }),
+    element("a", { href: camera.image_url, target: "_blank", rel: "noopener", text: "Current live image" }),
+  ]);
+  const charts = element("div", { class: "small-charts", id: "detail-charts" }, [element("div", { class: "empty", text: "Loading this camera's history…" })]);
+  const timelapse = timelapseFor(camera.camera_view_id);
+  detail.replaceChildren(timelapse ? buildTimelapsePlayer(timelapse) : image,
+    element("div", { class: "detail-title", text: camera.camera_name }),
+    element("div", { class: "detail-meta" }, [element("span", { class: "mono", text: camera.camera_view_id }), element("span", { text: camera.road_name || "" }), element("span", {}, badges)]),
+    links,
+    element("dl", { class: "facts" }, facts.flatMap(([term, value]) => [element("dt", { text: term }), element("dd", { text: value })])),
+    charts);
+  loadSeries().then(() => { if (state.selectedCameraId === camera.camera_view_id) renderCameraCharts(camera); })
+    .catch(() => charts.replaceChildren(element("div", { class: "empty", text: "History could not be loaded." })));
+}
+
+function loadSeries() {
+  if (!state.seriesRequest) state.seriesRequest = fetch(versioned("camera_series.json")).then(response => {
+    if (!response.ok) throw new Error(`camera_series.json: ${response.status}`);
+    return response.json();
+  }).then(series => { state.series = series; });
+  return state.seriesRequest;
+}
+
+function renderCameraCharts(camera) {
+  const container = document.getElementById("detail-charts");
+  const rows = (state.series.cameras[camera.camera_view_id] || []);
+  const seriesStart = parseUtc(state.series.series_start_utc);
+  const timeLabel = minutes => formatLocalTime(new Date(seriesStart.getTime() + minutes * 60000).toISOString(), true);
+  if (!rows.length) { container.replaceChildren(element("div", { class: "empty", text: "No frames with statistics yet." })); return; }
+  const hasFiveMinuteStation = camera.nearest_station_has_five_minute_reports === 1;
+  const hasRoadStation = Boolean(camera.road_station_id);
+  const chartDefinitions = [
+    ["Brightness (0–1)", 1, value => formatNumber(value, 2), [0, 1], false],
+  ];
+  if (hasRoadStation) chartDefinitions.push(
+    ["Road sensor air temperature (°F) · raw reading nearest each frame", 7, value => formatNumber(value, 1), null, false],
+    ["Road sensor pavement temperature (°F) · raw reading nearest each frame", 8, value => formatNumber(value, 1), null, false]);
+  if (hasFiveMinuteStation) chartDefinitions.push(["Linked airport visibility (miles) · cameras linked to stations with five-minute reports only", 6, value => formatNumber(value, 1), [0, 10], true]);
+  const blocks = chartDefinitions.map(([label, columnIndex, formatValue, yDomain, stepped]) => {
+    const chartHolder = element("div");
+    lineChart(chartHolder, { points: rows.map(row => ({ x: row[0], y: row[columnIndex] })), formatValue, formatX: timeLabel, yDomain, stepped, color: "var(--series)" });
+    return element("div", {}, [element("div", { class: "small-chart-label" }, [element("span", { text: label }), element("span", { class: "mono", text: `${rows.length} frames` })]), chartHolder]);
+  });
+  if (!hasFiveMinuteStation) blocks.push(element("div", { class: "panel-note", text: camera.nearest_station_id
+    ? `Visibility over time is shown only for cameras linked to stations with five-minute reports only; ${camera.nearest_station_id} ${describeReportInterval(state.stationsById.get(camera.nearest_station_id) || {}, true)}.`
+    : "No airport within 50 km, so no visibility is linked." }));
+  const scatterHolder = element("div");
+  scatterChart(scatterHolder, {
+    points: rows.filter(row => row[5] !== null && row[1] !== null).map(row => ({ x: row[5], y: row[1], minutes: row[0] })),
+    xLabel: "sun elevation (degrees); dashed line = end of civil twilight (−6°)", yLabel: "brightness",
+    xDomain: [-40, 60], yDomain: [0, 1], referenceX: -6,
+    tooltipFor: point => `${timeLabel(point.minutes)}\nsun ${formatNumber(point.x, 1)}°, brightness ${formatNumber(point.y, 2)}`,
+  });
+  blocks.push(element("div", {}, [element("div", { class: "small-chart-label" }, [element("span", { text: "Brightness vs sun elevation — expect a day plateau and a step down at dusk" })]), scatterHolder]));
+  container.replaceChildren(...blocks);
+}
+
+/* ------------------------------------------------------------ timelapse */
+let timelapseTimer = null;
+function timelapseFor(cameraId) { return (state.summary.timelapses || []).find(timelapse => timelapse.camera_view_id === cameraId); }
+function showTimelapseFrame(target, timelapse, index) {
+  const column = index % timelapse.tiles_per_row, row = Math.floor(index / timelapse.tiles_per_row);
+  target.style.backgroundImage = `url("${versioned(timelapse.image_file)}")`;
+  target.style.backgroundSize = `${timelapse.tiles_per_row * 100}% ${timelapse.row_count * 100}%`;
+  target.style.backgroundPosition = `${timelapse.tiles_per_row > 1 ? column / (timelapse.tiles_per_row - 1) * 100 : 0}% ${timelapse.row_count > 1 ? row / (timelapse.row_count - 1) * 100 : 0}%`;
+}
+/* The strip on the server may come from a newer export than the frame list this page holds
+   (fixed file names are rewritten in place). If its row count differs, say so rather than
+   show tiles cut across two frames. */
+function checkTimelapseStrip(timelapse, onMismatch) {
+  const probe = new Image();
+  probe.onload = () => {
+    const expectedHeight = timelapse.row_count * state.summary.thumbnail_tile.height_pixels;
+    if (probe.naturalHeight !== expectedHeight) onMismatch();
+  };
+  probe.src = versioned(timelapse.image_file);
+}
+
+function buildTimelapsePlayer(timelapse) {
+  if (timelapseTimer) { clearInterval(timelapseTimer); timelapseTimer = null; }
+  const frames = timelapse.frames;
+  const image = element("div", { class: "timelapse-image", role: "img", "aria-label": `Hourly timelapse from ${timelapse.camera_name}` });
+  checkTimelapseStrip(timelapse, () => {
+    if (timelapseTimer) { clearInterval(timelapseTimer); timelapseTimer = null; }
+    image.replaceWith(element("div", { class: "timelapse-image timelapse-stale", text: "This timelapse was updated after the page loaded. Reload the page to see it." }));
+    showUpdateBar();
+  });
+  const slider = element("input", { type: "range", min: 0, max: frames.length - 1, value: 0, id: "timelapse-slider", "aria-label": "Timelapse frame" });
+  const play = element("button", { class: "timelapse-play", type: "button", text: "Play" });
+  const caption = element("div", { class: "timelapse-caption", "aria-live": "polite" });
+  const show = index => {
+    const frame = frames[index];
+    showTimelapseFrame(image, timelapse, index);
+    const [lightName, lightClass] = lightLevel(frame.sun_elevation_degrees);
+    caption.replaceChildren(
+      element("span", { text: `${formatLocalTime(frame.captured_at_utc)} · frame ${index + 1} of ${frames.length}` }),
+      element("span", {}, [element("span", { class: `light-chip ${lightClass}`, text: lightName }), ` sun ${formatNumber(frame.sun_elevation_degrees, 1)}°`]),
+      element("span", { text: frame.visibility_miles === null ? "visibility –" : `${frame.nearest_station_id} visibility ${formatVisibility(frame.visibility_miles, frame.is_visibility_at_reporting_maximum)} · ${describeWeather(frame.raw_present_weather_codes)}` }));
+  };
+  slider.addEventListener("input", () => show(Number(slider.value)));
+  const stop = () => { clearInterval(timelapseTimer); timelapseTimer = null; play.textContent = "Play"; };
+  play.addEventListener("click", () => {
+    if (timelapseTimer) { stop(); return; }
+    play.textContent = "Pause";
+    timelapseTimer = setInterval(() => {
+      const next = (Number(slider.value) + 1) % frames.length;
+      slider.value = String(next); show(next);
+    }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 1600 : 700);
+  });
+  show(0);
+  return element("div", { class: "timelapse" }, [image, element("div", { class: "timelapse-controls" }, [play, slider]), caption]);
+}
+/* ------------------------------------------------------------ camera moves */
+const movementGroups = {
+  all: { label: "All moves", kinds: null },
+  pan_tilt: { label: "Pan or tilt", kinds: ["pan_left", "pan_right", "tilt_up", "tilt_down"] },
+  zoom: { label: "Zoom", kinds: ["zoom_in", "zoom_out"] },
+  new_view: { label: "Different scene", kinds: ["new_view"] },
+};
+function buildMovementCard(movement) {
+  const compare = element("div", { class: "move-compare", role: "img", "aria-label": `${movement.camera_name}: before and after the move` }, [
+    element("div", { class: "move-layer is-before", style: `background-image:url("${versioned(movement.image_file)}")` }),
+    element("div", { class: "move-layer is-after", style: `background-image:url("${versioned(movement.image_file)}")` }),
+    element("div", { class: "move-divider" }),
+    element("span", { class: "move-tag is-before", text: "Before" }),
+    element("span", { class: "move-tag is-after", text: "After" })]);
+  const slider = element("input", { type: "range", class: "move-slider", min: 0, max: 100, value: 50,
+    "aria-label": `Compare before and after for ${movement.camera_name}: left shows before, right shows after` });
+  slider.addEventListener("input", () => compare.style.setProperty("--split", `${slider.value}%`));
+  const cameraButton = element("button", { class: "move-camera", type: "button", text: movement.camera_name });
+  cameraButton.addEventListener("click", () => selectCamera(movement.camera_view_id));
+  return element("article", { class: "move-card" }, [compare, slider, element("div", { class: "move-caption" }, [
+    cameraButton,
+    element("span", { text: describeMovement(movement) }),
+    element("span", { class: "move-when", text: `between ${formatLocalTime(movement.before_captured_at_utc)} and ${formatLocalTime(movement.after_captured_at_utc)}` })])]);
+}
+/* Camera moves live in their own file, written by the detect-camera-movements step. */
+async function loadMovements() {
+  try {
+    const response = await fetch(`camera_movements.json?v=${Date.now()}`);
+    state.movements = response.ok ? (await response.json()).camera_movements : [];
+  } catch (error) { state.movements = []; }
+  renderMovements();
+}
+function renderMovements(groupName = state.movementGroup || "all") {
+  state.movementGroup = groupName;
+  const movements = state.movements || [];
+  const cameraCount = new Set(movements.map(movement => movement.camera_view_id)).size;
+  document.getElementById("move-summary").textContent = movements.length
+    ? `${formatNumber(movements.length)} moves on ${formatNumber(cameraCount)} of ${formatNumber(state.summary.cameras.length)} camera views during the collection.`
+    : "No camera moves recorded. Moves are found by the detect-camera-movements step, which compares daytime frames, so at least a few hours of daylight are needed.";
+  document.getElementById("move-filters").replaceChildren(...Object.entries(movementGroups).map(([name, group]) => {
+    const count = movements.filter(movement => !group.kinds || group.kinds.includes(movement.movement_kind)).length;
+    const chip = element("button", { class: `chip${name === groupName ? " is-active" : ""}`, type: "button", "aria-pressed": String(name === groupName), text: `${group.label} (${formatNumber(count)})` });
+    chip.addEventListener("click", () => renderMovements(name));
+    return chip;
+  }));
+  const kinds = movementGroups[groupName].kinds;
+  const shown = movements.filter(movement => !kinds || kinds.includes(movement.movement_kind));
+  const withImages = shown.filter(movement => movement.image_file), withoutImages = shown.filter(movement => !movement.image_file);
+  const grid = document.getElementById("move-grid");
+  grid.replaceChildren(...withImages.map(buildMovementCard));
+  limitWithShowMore(grid, grid, { initialCount: 6, noun: "moves" });
+  const list = document.getElementById("move-list");
+  if (!withoutImages.length) { list.replaceChildren(); return; }
+  list.replaceChildren(element("div", { class: "move-list" }, [
+    element("strong", { text: `${formatNumber(withoutImages.length)} earlier moves (pictures are kept for the newest ${formatNumber(movements.filter(movement => movement.image_file).length)})` }),
+    element("ul", {}, withoutImages.map(movement => {
+      const button = element("button", { type: "button", text: movement.camera_name });
+      button.addEventListener("click", () => selectCamera(movement.camera_view_id));
+      return element("li", {}, [button, ` · ${describeMovement(movement)} · between ${formatLocalTime(movement.before_captured_at_utc)} and ${formatLocalTime(movement.after_captured_at_utc)}`]);
+    }))]));
+  const earlierList = list.querySelector("ul");
+  limitWithShowMore(earlierList, earlierList, { initialCount: 10, stepCount: 20, noun: "earlier moves" });
+}
+
+function renderTimelapseList() {
+  const timelapses = state.summary.timelapses || [];
+  const container = document.getElementById("timelapse-list");
+  if (!timelapses.length) { container.replaceChildren(element("div", { class: "empty", text: "Timelapses appear once there are several hours of frames." })); return; }
+  container.replaceChildren(...timelapses.map(timelapse => {
+    const preview = element("div", { class: "timelapse-image" });
+    const nightIndex = Math.max(0, timelapse.frames.findIndex(frame => frame.sun_elevation_degrees !== null && frame.sun_elevation_degrees < -6));
+    showTimelapseFrame(preview, timelapse, nightIndex);
+    const button = element("button", { class: "timelapse-button", type: "button", "aria-label": `Open the timelapse for ${timelapse.camera_name}` },
+      [preview, element("span", { text: timelapse.camera_name })]);
+    button.addEventListener("click", () => selectCamera(timelapse.camera_view_id));
+    return button;
+  }));
+}
+
+/* ------------------------------------------------------------ camera browser */
+function filteredCameras() {
+  const search = state.search.trim().toLowerCase();
+  let cameras = state.summary.cameras.filter(camera => {
+    if (state.filter === "interstate" && !camera.is_on_interstate_80) return false;
+    if (state.filter === "silent" && !camera.is_silent) return false;
+    if (state.filter === "no-station" && camera.nearest_station_id) return false;
+    if (state.filter === "night" && !camera.is_night) return false;
+    if (!search) return true;
+    return `${camera.camera_name} ${camera.camera_view_id} ${camera.road_name || ""} ${camera.nearest_station_id || ""}`.toLowerCase().includes(search);
+  });
+  const sorters = {
+    name: (a, b) => a.camera_name.localeCompare(b.camera_name),
+    brightness: (a, b) => (a.mean_brightness ?? 9) - (b.mean_brightness ?? 9),
+    contrast: (a, b) => (a.contrast_standard_deviation ?? 9) - (b.contrast_standard_deviation ?? 9),
+    longitude: (a, b) => a.longitude - b.longitude,
+  };
+  return cameras.sort(sorters[state.sort]);
+}
+
+function renderCameraTiles() {
+  const cameras = filteredCameras();
+  const shown = cameras.slice(0, state.shownTileCount);
+  document.getElementById("browser-count").textContent = `Showing ${formatNumber(shown.length)} of ${formatNumber(cameras.length)} camera views`;
+  document.getElementById("camera-tiles").replaceChildren(...shown.map(camera => {
+    const image = element("div", { class: "tile-image" });
+    applyThumbnail(image, camera);
+    const badges = [];
+    if (camera.is_on_interstate_80) badges.push(element("span", { class: "badge badge-interstate", text: "I-80" }));
+    if (camera.is_silent) badges.push(element("span", { class: "badge badge-warning", text: "Silent" }));
+    if (!camera.nearest_station_id) badges.push(element("span", { class: "badge badge-muted", text: "No airport" }));
+    const tile = element("button", { class: "tile", type: "button", "aria-label": `Show ${camera.camera_name}` }, [image,
+      element("div", { class: "tile-body" }, [
+        element("div", { class: "tile-name", text: camera.camera_name }),
+        element("div", { class: "tile-meta", text: `${formatAge(camera.latest_captured_at_utc)} · ${camera.nearest_station_id || "–"}` }),
+        badges.length ? element("div", {}, badges) : null,
+      ])]);
+    tile.addEventListener("click", () => selectCamera(camera.camera_view_id));
+    return tile;
+  }));
+  document.getElementById("show-more").hidden = shown.length >= cameras.length;
+}
+
+/* ------------------------------------------------------------ weather */
+function renderWeather() {
+  const linking = state.summary.linking;
+  const methodNames = { averaging_window: "Averaging window", nearest_within_30_minutes: "Nearest within 30 min", no_match: "No report within 30 min" };
+  const methodColors = { averaging_window: "var(--series)", nearest_within_30_minutes: "var(--series-3)", no_match: "var(--series-muted)" };
+  const groups = [
+    ["Final · airports with five-minute reports", linking.final_five_minute_station],
+    ["Final · airports without five-minute reports", linking.final_hourly_only_station],
+    ["Still updating · airports with five-minute reports", linking.still_updating_five_minute_station],
+    ["Still updating · airports without five-minute reports", linking.still_updating_hourly_only_station],
+  ];
+  const linkingContainer = document.getElementById("linking-chart");
+  const rows = groups.map(([label, group]) => {
+    const total = group.link_count || 0;
+    const bar = element("div", { style: "display:flex;height:22px;border-radius:4px;overflow:hidden;background:var(--surface-sunken);gap:2px" },
+      Object.keys(methodNames).map(method => {
+        const count = group.method_counts[method] || 0;
+        if (!count) return null;
+        const piece = element("div", { style: `width:${count / total * 100}%;background:${methodColors[method]}` });
+        piece.addEventListener("mousemove", event => showTooltip(event, `${methodNames[method]}: ${formatNumber(count)} (${formatNumber(count / total * 100, 1)}%)`));
+        piece.addEventListener("mouseleave", hideTooltip);
+        return piece;
+      }));
+    const averaging = total ? (group.method_counts.averaging_window || 0) / total * 100 : null;
+    return element("div", { style: "display:grid;gap:4px" }, [
+      element("div", { class: "small-chart-label" }, [element("span", { text: label }),
+        element("span", { class: "mono", text: total ? `${formatNumber(total)} frames · ${formatNumber(averaging, 1)}% averaging window · median offset ${formatNumber(group.median_absolute_visibility_offset_seconds / 60, 1)} min` : "none yet" })]),
+      total ? bar : element("div", { class: "empty", style: "padding:4px 0", text: "No frames in this group yet" }),
+    ]);
+  });
+  linkingContainer.replaceChildren(element("div", { style: "display:grid;gap:14px" }, rows),
+    element("div", { class: "legend" }, Object.keys(methodNames).map(method => element("span", {}, [element("span", { class: "legend-swatch", style: `background:${methodColors[method]}` }), methodNames[method]]))));
+
+  const weatherSeen = state.summary.weather_seen;
+  const edges = weatherSeen.visibility_bin_edges_miles;
+  const labels = edges.slice(0, -1).map((low, index) => `${low}–${edges[index + 1]}`).concat("10+");
+  barChart(document.getElementById("visibility-chart"), { labels, values: weatherSeen.visibility_counts, height: 220,
+    tooltipFor: index => `${labels[index]} miles: ${formatNumber(weatherSeen.visibility_counts[index])} frames` });
+  document.getElementById("visibility-note").textContent = `${formatNumber(weatherSeen.five_minute_station_frame_count)} of ${formatNumber(weatherSeen.linked_frame_count)} linked frames · ${formatNumber(weatherSeen.frames_below_three_miles)} under 3 miles`;
+
+  const stations = [...state.summary.stations].sort((a, b) => ((a.latest && a.latest.visibility_miles) ?? 99) - ((b.latest && b.latest.visibility_miles) ?? 99));
+  const table = element("table", {}, [
+    element("thead", {}, element("tr", {}, [
+      ["Airport", "Airport identifier, e.g. LNK = Lincoln. Hover a row to see the full raw report."],
+      ["Cameras it serves", "Camera views for which this is the nearest airport"],
+      ["Reports every", "How often this airport reports, measured from its own reports over the last 48 hours: 5 min (five-minute reports; temperature only in the hourly report), 20 min (automated AWOS stations), or 60 min (hourly)."],
+      ["How far you can see", "Visibility in miles. 10+ means 10 miles or more, the most the sensor reports."],
+      ["Weather", "Precipitation and obscurations reported at the airport, e.g. rain, mist, haze"],
+      ["Lowest cloud layer", "Height above ground of the lowest broken or overcast cloud layer (the ceiling). – means no ceiling."],
+      ["Wind", "Wind speed and gusts, converted from knots to mph"],
+      ["Temperature · dew point", "When the two are within about 4 °F, mist or fog becomes likely"],
+      ["Reported", "When this report was observed (your local time)"],
+    ].map(([heading, explanation]) => element("th", { text: heading, title: explanation })))),
+    element("tbody", {}, stations.map(station => {
+      const latest = station.latest || {}, temperature = station.latest_temperature || {};
+      const isNotable = latest.visibility_miles !== undefined && latest.visibility_miles < 10 || Boolean(latest.raw_present_weather_codes);
+      return stationRow(station.station_id, [
+        element("td", { class: "number", text: formatNumber(station.cameras_served) }),
+        element("td", { class: "number", text: describeReportInterval(station) }),
+        element("td", { class: "number", text: formatVisibility(latest.visibility_miles, latest.is_visibility_at_reporting_maximum) }),
+        element("td", { text: latest.raw_present_weather_codes ? describeWeather(latest.raw_present_weather_codes) : "–", title: latest.raw_present_weather_codes || "" }),
+        element("td", { class: "number", text: latest.cloud_ceiling_feet ? `${formatNumber(latest.cloud_ceiling_feet)} ft` : "–" }),
+        element("td", { class: "number", text: formatWind(latest.wind_speed_knots, latest.wind_gust_knots) }),
+        element("td", { class: "number", text: temperature.air_temperature_fahrenheit !== undefined ? `${formatNumber(temperature.air_temperature_fahrenheit)}° · ${formatNumber(temperature.dew_point_fahrenheit)}° (${formatNumber(temperature.air_temperature_fahrenheit - temperature.dew_point_fahrenheit)}° apart)` : "–" }),
+        element("td", { class: "number", text: latest.observed_at_utc ? formatLocalTime(latest.observed_at_utc) : "–" }),
+      ], { class: isNotable ? "is-notable" : null, title: latest.raw_weather_report_text || "" });
+    })),
+  ]);
+  document.getElementById("station-table").replaceChildren(table);
+  renderRoadStationTable();
+}
+
+/* Wind is stored in knots and shown in mph (spread included: a scale, no offset). */
+const roadMeasurements = [
+  ["air_temperature_fahrenheit", "Air temperature", (value, digits) => `${formatNumber(value, digits)} °F`],
+  ["pavement_temperature_fahrenheit", "Pavement temperature", (value, digits) => `${formatNumber(value, digits)} °F`],
+  ["wind_speed_knots", "Wind", (value, digits) => `${formatNumber(value * 1.15078, digits)} mph`],
+];
+function renderRoadStationTable() {
+  const stations = state.summary.road_station_readings || [];
+  const mostlyOneValueCount = stations.filter(station =>
+    Object.values(station.measurements).some(summary => summary.pattern === "mostly one value")).length;
+  document.getElementById("road-station-note").textContent =
+    `${formatNumber(stations.length)} stations with readings · ${formatNumber(mostlyOneValueCount)} with a measurement that is mostly one value`;
+  const table = element("table", {}, [
+    element("thead", {}, element("tr", {}, [
+      ["Station", "NDOT road station identifier. Click a row to see the station on the map."],
+      ["Location", "Station name as NDOT lists it"],
+      ["Readings", "Readings received in the recent window, and when the last one arrived (your local time)"],
+      ...roadMeasurements.map(([, label]) => [label, "Latest value and range, or the value repeated in most readings. Hover a cell for details."]),
+    ].map(([heading, explanation]) => element("th", { text: heading, title: explanation })))),
+    element("tbody", {}, stations.map(station => stationRow(station.station_id, [
+      element("td", { text: station.station_name || "–" }),
+      element("td", { class: "number", text: `${formatNumber(station.reading_count)} · last ${formatLocalTime(station.last_reading_utc)}` }),
+      ...roadMeasurements.map(([name, , formatValue]) => {
+        const summary = station.measurements[name];
+        return element("td", { class: summary.pattern === "mostly one value" ? "measurement is-flagged" : "measurement",
+                               text: describeMeasurementSummary(summary, formatValue),
+                               title: describeMeasurementDetails(summary, formatValue) });
+      }),
+    ]))),
+  ]);
+  document.getElementById("road-station-table").replaceChildren(table);
+}
+
+/* ------------------------------------------------------------ message signs */
+const signStatusWords = { DISPLAYING_MESSAGE: "showing a message", NOT_LISTED: "not listed (probably blank)",
+                          BLANK: "blank", ERROR_OR_FAILURE: "error or failure", OUT_OF_COMMUNICATION: "out of communication" };
+function describeSignMessage(entry) {
+  if (entry.message_text) return entry.message_text;
+  if (entry.message_image_url) return "(image message)";
+  return entry.sign_status === "DISPLAYING_MESSAGE" ? "(no text)" : "–";
+}
+function signMessageCell(sign) {
+  const parts = [element("div", { class: "sign-message", text: describeSignMessage(sign) })];
+  if (sign.message_image_url) parts.push(element("a", { href: sign.message_image_url, target: "_blank", rel: "noopener", text: "Open the sign image" }));
+  const history = sign.message_history || [];
+  if (history.length > 1) {
+    parts.push(element("details", { class: "sign-history" }, [
+      element("summary", { text: `History (${formatNumber(sign.message_change_count)} changes${sign.message_change_count > history.length ? `, newest ${history.length} shown` : ""})` }),
+      element("ol", {}, history.map(entry => element("li", {
+        text: `${formatLocalTime(entry.observed_at_utc)}: ${signStatusWords[entry.sign_status] || entry.sign_status}${entry.sign_status === "DISPLAYING_MESSAGE" ? ` · ${describeSignMessage(entry)}` : ""}${entry.is_speed_message ? " · shows a speed" : ""}` })))]));
+  }
+  const cell = element("td", {}, parts);
+  cell.addEventListener("click", event => { if (event.target.closest("details, a")) event.stopPropagation(); });   // opening history is not a map click
+  return cell;
+}
+function renderSignTable() {
+  const signs = state.summary.electronic_signs || [];
+  const showingCount = signs.filter(sign => sign.sign_status === "DISPLAYING_MESSAGE").length;
+  const speedCount = signs.filter(sign => sign.has_displayed_speed_message).length;
+  document.getElementById("sign-note").textContent =
+    `${formatNumber(signs.length)} signs seen · ${formatNumber(showingCount)} showing a message now · ${formatNumber(speedCount)} have shown a speed`;
+  const table = element("table", {}, [
+    element("thead", {}, element("tr", {}, [
+      ["Sign", "511 sign number (necarsxsigns*N). Click a row to see the sign on the map."],
+      ["Where", "Road, travel direction, milepost and nearest town as 511 lists them"],
+      ["Type", "CMS: text message board. VMS image: the message is a picture. Gantry panel: one panel of an overhead sign."],
+      ["Now", "Status at the latest check, and since when"],
+      ["Message", "The current message (lines joined by /). Open History for every recorded change."],
+      ["Speed shown", "Whether any recorded message contained a speed (for example SPEED 45 or 45 MPH): a candidate VAS sign"],
+      ["First · last seen", "When recording first saw the sign on 511, and when it last did (your local time)"],
+    ].map(([heading, explanation]) => element("th", { text: heading, title: explanation })))),
+    element("tbody", {}, signs.map(sign => stationRow(sign.sign_id, [
+      element("td", { text: [sign.road_name, sign.travel_direction, sign.milepost !== null ? `mile ${formatNumber(sign.milepost, 1)}` : null, sign.city_name].filter(Boolean).join(" · ") || sign.sign_name || "–",
+                      title: sign.sign_name || "" }),
+      element("td", { text: [sign.sign_display_type === "VMS_IMAGE" ? "VMS image" : sign.sign_display_type, sign.is_gantry_panel ? "gantry panel" : null].filter(Boolean).join(" · ") || "–" }),
+      element("td", { text: `${signStatusWords[sign.sign_status] || sign.sign_status || "–"}${sign.message_since_utc ? ` since ${formatLocalTime(sign.message_since_utc)}` : ""}` }),
+      signMessageCell(sign),
+      element("td", { class: sign.has_displayed_speed_message ? "is-flagged" : null, text: sign.has_displayed_speed_message ? "yes" : "no" }),
+      element("td", { class: "number", text: `${formatLocalTime(sign.first_seen_at_utc)} · ${formatLocalTime(sign.last_seen_at_utc)}` }),
+    ], {}, sign.sign_id.split("*").pop()))),
+  ]);
+  document.getElementById("sign-table").replaceChildren(table);
+}
+
+/* ------------------------------------------------------------ gallery */
+function renderGallery() {
+  const frames = state.summary.gallery;
+  const container = document.getElementById("gallery-groups");
+  if (!frames.length) { container.replaceChildren(element("div", { class: "empty", text: "No frames picked yet." })); return; }
+  const groupNames = [...new Set(frames.map(frame => frame.group_name))];
+  container.replaceChildren(...groupNames.map(groupName => element("div", { class: "gallery-group" }, [
+    element("h3", { text: groupName }),
+    element("div", { class: "gallery" }, frames.filter(frame => frame.group_name === groupName).map(frame => {
+      const figure = element("figure", {}, [
+        element("img", { src: versioned(frame.image_file), alt: `${frame.camera_name} at ${formatLocalTime(frame.captured_at_utc)}`, loading: "lazy" }),
+        element("figcaption", {}, [
+          element("strong", { text: frame.camera_name }),
+          element("span", { text: `${formatLocalTime(frame.captured_at_utc)} · airport ${frame.nearest_station_id || "–"}${frame.distance_kilometers ? `, ${formatNumber(frame.distance_kilometers, 1)} km` : ""}` }),
+          element("span", { text: `Can see ${formatVisibility(frame.visibility_miles, frame.is_visibility_at_reporting_maximum)} · ${describeWeather(frame.raw_present_weather_codes)}` }),
+          element("span", { text: frame.air_temperature_fahrenheit !== null ? `${formatNumber(frame.air_temperature_fahrenheit)} °F, dew point ${formatNumber(frame.dew_point_fahrenheit)} °F` : "Temperature not reported" }),
+        ]),
+      ]);
+      figure.style.cursor = "pointer";
+      figure.addEventListener("click", () => selectCamera(frame.camera_view_id));
+      return figure;
+    })),
+  ])));
+}
+
+/* ------------------------------------------------------------ labeled images */
+/* labeled_images.json and labeled_NN.jpg come from export-labeled-images (made where the labels
+   are, copied in by export-dashboard); without them the section says no labels are published. */
+async function loadLabeledImages() {
+  try {
+    const response = await fetch(versioned("labeled_images.json"));
+    state.labels = response.ok ? await response.json() : null;
+  } catch (error) { state.labels = null; }
+  renderLabeledImages();
+}
+function applyLabeledThumbnail(target, image) {
+  const labels = state.labels, tile = labels.tile;
+  const sheetImageCount = Math.min(tile.tiles_per_sheet, labels.images.length - image.sheet * tile.tiles_per_sheet);
+  const rowCount = Math.ceil(sheetImageCount / tile.tiles_per_row);
+  const column = image.position % tile.tiles_per_row, row = Math.floor(image.position / tile.tiles_per_row);
+  target.style.backgroundImage = `url("${versioned(`labeled_${String(image.sheet).padStart(2, "0")}.jpg`)}")`;
+  target.style.backgroundSize = `${tile.tiles_per_row * 100}% ${rowCount * 100}%`;
+  target.style.backgroundPosition = `${tile.tiles_per_row > 1 ? column / (tile.tiles_per_row - 1) * 100 : 0}% ${rowCount > 1 ? row / (rowCount - 1) * 100 : 0}%`;
+  target.setAttribute("role", "img");
+  target.setAttribute("aria-label", `${image.camera_name}, labeled ${describeRoadCondition(image.label)}`);
+}
+function renderLabeledImages(labelFilter = state.labelFilter || "all") {
+  state.labelFilter = labelFilter;
+  const labels = state.labels;
+  const tiles = document.getElementById("label-tiles");
+  if (!labels || !labels.images.length) {
+    for (const id of ["label-figures", "label-chart", "label-filters"]) document.getElementById(id).replaceChildren();
+    tiles.replaceChildren(element("div", { class: "empty", text: "No labels published yet. Labels appear here after the team's Roboflow labels are imported." }));
+    return;
+  }
+  const images = labels.images;
+  const judged = images.filter(image => !["cannot_tell", "unusable_frame"].includes(image.label));
+  const figures = [
+    ["Labeled frames", formatNumber(images.length)],
+    ["Road condition judged", formatNumber(judged.length)],
+    ["Cameras", formatNumber(new Set(images.map(image => image.camera_view_id)).size)],
+  ];
+  document.getElementById("label-figures").replaceChildren(...figures.map(([label, value]) =>
+    element("div", { class: "figure" }, [element("div", { class: "figure-value", text: value }), element("div", { class: "figure-label", text: label })])));
+  document.getElementById("label-source-note").textContent = labels.labels_imported_at_utc ? `imported ${formatLocalTime(labels.labels_imported_at_utc)}` : "";
+  barChart(document.getElementById("label-chart"), {
+    labels: labels.classes.map(describeRoadCondition), values: labels.classes.map(name => labels.counts[name]),
+    tooltipFor: index => `${describeRoadCondition(labels.classes[index])}: ${formatNumber(labels.counts[labels.classes[index]])} frames`,
+  });
+  const check = labels.usability_check_vs_label;
+  document.getElementById("label-check-note").textContent = check
+    ? `Automatic usability check: of ${formatNumber(check.flagged_unusable.labeled)} labeled frames it called unusable, labelers marked ${formatNumber(check.flagged_unusable.labeled_cannot_tell_or_unusable)} "can't tell" or "unusable"; of the ${formatNumber(check.not_flagged.labeled)} it passed, ${formatNumber(check.not_flagged.labeled_cannot_tell_or_unusable)}.`
+    : "";
+  const filters = ["all", ...labels.classes];
+  document.getElementById("label-filters").replaceChildren(...filters.map(name => {
+    const count = name === "all" ? images.length : labels.counts[name];
+    const chip = element("button", { class: "chip", type: "button", "aria-pressed": String(name === labelFilter),
+      text: `${name === "all" ? "All" : describeRoadCondition(name)} (${formatNumber(count)})` });
+    chip.addEventListener("click", () => renderLabeledImages(name));
+    return chip;
+  }));
+  const shown = images.filter(image => labelFilter === "all" || image.label === labelFilter);
+  tiles.replaceChildren(...shown.map(image => {
+    const picture = element("div", { class: "tile-image" });
+    applyLabeledThumbnail(picture, image);
+    return element("div", { class: "tile label-tile" }, [picture, element("div", { class: "tile-body" }, [
+      element("div", {}, [element("span", { class: `badge badge-label is-${image.label}`, text: describeRoadCondition(image.label) }),
+        image.usability === "flagged_unusable" ? element("span", { class: "badge badge-muted", text: "check: unusable" }) : null]),
+      element("div", { class: "tile-name", text: image.camera_name || image.camera_view_id }),
+      element("div", { class: "tile-meta", text: formatLocalTime(image.captured_at_utc) }),
+    ])]);
+  }));
+  limitWithShowMore(tiles, tiles, { initialCount: 24, stepCount: 48, noun: "labeled frames" });
+}
+
+/* ------------------------------------------------------------ wiring */
+function bindControls() {
+  document.getElementById("camera-search").addEventListener("input", event => { state.search = event.target.value; state.shownTileCount = 48; renderCameraTiles(); });
+  document.querySelectorAll(".chip[data-filter]").forEach(chip => chip.addEventListener("click", () => {
+    state.filter = chip.dataset.filter; state.shownTileCount = 48;
+    document.querySelectorAll(".chip[data-filter]").forEach(other => other.setAttribute("aria-pressed", String(other === chip)));
+    try { localStorage.setItem("camera-filter", state.filter); } catch (error) { /* storage is optional */ }
+    renderCameraTiles();
+  }));
+  document.getElementById("camera-sort").addEventListener("change", event => { state.sort = event.target.value; renderCameraTiles(); });
+  document.getElementById("show-more").addEventListener("click", () => { state.shownTileCount += 48; renderCameraTiles(); });
+  window.addEventListener("hashchange", () => { const cameraId = location.hash.slice(1); if (cameraById(cameraId)) selectCamera(cameraId); });
+}
+
+function initialCameraId() {
+  const fromHash = location.hash.slice(1);
+  if (fromHash && cameraById(fromHash)) return fromHash;
+  const timelapses = state.summary.timelapses || [];
+  if (timelapses.length) return timelapses[Math.floor(timelapses.length / 2)].camera_view_id;
+  const interstateCameras = state.summary.cameras.filter(camera => camera.is_on_interstate_80 && camera.frame_count > 0 && camera.nearest_station_id);
+  const pool = interstateCameras.length ? interstateCameras : state.summary.cameras;
+  return pool.sort((a, b) => b.frame_count - a.frame_count || a.longitude - b.longitude)[Math.floor(pool.length / 2)].camera_view_id;
+}
+
+/* Offer a reload when a newer export has been written (version.json changes). */
+const VERSION_CHECK_MILLISECONDS = 120000;
+function showUpdateBar() { document.getElementById("update-bar").hidden = false; }
+async function checkForNewData() {
+  try {
+    const response = await fetch(`version.json?v=${Date.now()}`);
+    if (!response.ok) return;
+    const version = await response.json();
+    if (state.summary && version.generated_at_utc !== state.summary.generated_at_utc) showUpdateBar();
+  } catch (error) { /* offline or not published yet: try again later */ }
+}
+
+async function start() {
+  bindControls();
+  document.getElementById("update-bar-button").addEventListener("click", () => location.reload());
+  setInterval(checkForNewData, VERSION_CHECK_MILLISECONDS);
+  setUpMapLegend();
+  try {
+    const response = await fetch(`summary.json?v=${Date.now()}`);
+    if (!response.ok) throw new Error(`summary.json: ${response.status}`);
+    state.summary = await response.json();
+  } catch (error) {
+    document.getElementById("progress-label").textContent = `The collection data could not be loaded (${error.message}). Reload the page to try again.`;
+    return;
+  }
+  try { const savedFilter = localStorage.getItem("camera-filter"); if (savedFilter) document.querySelector(`.chip[data-filter="${savedFilter}"]`)?.click(); } catch (error) { /* storage is optional */ }
+  renderStatus();
+  renderOverview();
+  renderMap();
+  renderTimelapseList();
+  const sectionsLoaded = Promise.all([loadMovements(), loadLabeledImages()]);
+  renderCameraTiles();
+  renderWeather();
+  renderSignTable();
+  renderGallery();
+  // A camera in the address opens and scrolls to it; a section link (#labels) is left alone.
+  const hashIsCamera = Boolean(cameraById(location.hash.slice(1)));
+  selectCamera(initialCameraId(), hashIsCamera, hashIsCamera || !location.hash);
+  // Sections above load their own files, so the browser's jump to #section lands early: jump again once they are in.
+  if (!hashIsCamera && location.hash) sectionsLoaded.then(() => document.getElementById(location.hash.slice(1))?.scrollIntoView());
+  document.getElementById("footer").textContent = `University of Nebraska–Lincoln senior design · visibility research. Frames from Nebraska 511 (NDOT); airport observations from the Iowa Environmental Mesonet ASOS archive. Collection began ${formatLocalTime(state.summary.totals.first_fetch_utc)}.`;
+}
+start();
+</script>
